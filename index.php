@@ -84,6 +84,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<style>
+  .auth-tabs { display: flex; gap: 8px; margin-bottom: 28px; }
+  .auth-tabs [data-auth-tab] { flex: 1; justify-content: center; }
+  .auth-tabs [aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+  .auth-tabs [aria-selected="false"] { background: transparent; }
+  [data-auth-panel][hidden], [data-auth-form][hidden] { display: none !important; }
+  #auth .tit { margin: 8px 0 10px; }
+  #auth .sub { margin-bottom: 24px; }
+  #auth form { display: grid; gap: 18px; }
+  #auth form label { display: block; }
+  #auth form input { width: 100%; }
+  #auth .troca { margin-top: 18px; text-align: center; }
+</style>
 </head>
 <body data-page="home">
 
@@ -334,13 +347,131 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </div>
 </section>
 
-<section class="sec tight alt" id="acesso"><div class="wrap auth-grid"><div><span class="lab ac lab-line">Área do cliente</span><h2>Acompanhe seu projeto em cada etapa.</h2><p class="lead">Entre com seu e-mail e senha ou crie uma conta para enviar solicitações e acompanhar o retorno da equipe.</p><p class="hint">Os dados são registrados no sistema, não apenas no navegador.</p></div><div class="sheet pad-lg">
-<?php if ($mensagem): ?><p class="msg ok"><?php echo htmlspecialchars($mensagem); ?></p><?php endif; ?>
-<?php if ($erro): ?><p class="msg err"><?php echo htmlspecialchars($erro); ?></p><?php endif; ?>
-<div class="auth-tabs"><button type="button" class="tab active" data-auth-tab="entrar">Entrar</button><button type="button" class="tab" data-auth-tab="criar">Criar conta</button></div>
-<form method="post" id="loginForm" data-auth-form="entrar"><label><span class="lab">E-mail</span><input type="email" name="email" required autocomplete="username" placeholder="voce@email.com"></label><label><span class="lab">Senha</span><span class="pw"><input type="password" name="senha" required autocomplete="current-password" placeholder="Sua senha"><button type="button" class="eye" aria-label="Mostrar senha">◉</button></span></label><button class="btn wide lg" type="submit">Entrar no meu painel</button></form>
-<form method="post" id="cadastroForm" data-auth-form="criar" hidden><label><span class="lab">Seu nome completo</span><input name="novoUsuario" required autocomplete="name" placeholder="Nome e sobrenome"></label><label><span class="lab">E-mail</span><input type="email" name="novoEmail" required autocomplete="email" placeholder="voce@email.com"></label><label><span class="lab">Telefone</span><input name="novoTelefone" type="tel" autocomplete="tel" placeholder="(11) 99999-9999"></label><label><span class="lab">Criar senha</span><span class="pw"><input type="password" name="novaSenha" required minlength="6" autocomplete="new-password" placeholder="Mínimo de 6 caracteres"><button type="button" class="eye" aria-label="Mostrar senha">◉</button></span></label><button class="btn wide lg" type="submit">Criar minha conta</button></form>
-</div></div></section>
+<section class="sec tight alt" id="acesso">
+  <div class="wrap">
+    <div class="login">
+      <div class="art">
+        <img
+          src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792139949/WhatsApp_Image_2026-10-16_at_05.34.37.jpg"
+          alt="Residência contemporânea do portfólio"
+          loading="lazy"
+        >
+        <div class="ov">
+          <span class="lab">Área do cliente</span>
+          <h2>Acompanhe seu projeto em cada etapa.</h2>
+          <p>Envie sua solicitação, compartilhe arquivos e acompanhe as respostas da equipe.</p>
+          <ul>
+            <li>Fotos, vídeos e documentos no mesmo pedido</li>
+            <li>Status e respostas reunidos na sua conta</li>
+            <li>Acesso seguro com e-mail e senha</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="form" id="auth">
+        <?php if ($mensagem !== ""): ?>
+          <p class="msg ok" role="status"><?php echo htmlspecialchars($mensagem, ENT_QUOTES, "UTF-8"); ?></p>
+        <?php endif; ?>
+
+        <?php if ($erro !== ""): ?>
+          <p class="msg err" role="alert"><?php echo htmlspecialchars($erro, ENT_QUOTES, "UTF-8"); ?></p>
+        <?php endif; ?>
+
+        <div class="auth-tabs" role="tablist" aria-label="Acesso à conta">
+          <button type="button" class="btn sm" data-auth-tab="entrar" aria-selected="true">Entrar</button>
+          <button type="button" class="btn sm out" data-auth-tab="criar" aria-selected="false">Criar conta</button>
+        </div>
+
+        <div data-auth-panel="entrar">
+          <span class="lab ac lab-line">Entrar</span>
+          <h2 class="tit">Bem-vindo de volta</h2>
+          <p class="sub">Acesse com o e-mail e a senha cadastrados para abrir o seu painel.</p>
+
+          <form method="post" id="loginForm" data-auth-form="entrar">
+            <label>
+              <span class="lab">E-mail</span>
+              <input
+                type="email"
+                name="email"
+                required
+                autocomplete="username"
+                placeholder="voce@email.com"
+              >
+            </label>
+
+            <label>
+              <span class="lab lab-row">Senha</span>
+              <span class="pw">
+                <input
+                  type="password"
+                  name="senha"
+                  required
+                  autocomplete="current-password"
+                  placeholder="Sua senha"
+                >
+                <button type="button" class="eye" aria-label="Mostrar senha">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </span>
+            </label>
+
+            <button class="btn wide lg" type="submit">
+              Entrar no meu painel
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                <path d="M5 12h14m-6-6 6 6-6 6"></path>
+              </svg>
+            </button>
+          </form>
+
+          <p class="troca">Ainda não tem conta? <button type="button" class="link" data-go="criar">Criar conta</button></p>
+        </div>
+
+        <div data-auth-panel="criar" hidden>
+          <span class="lab ac lab-line">Criar conta</span>
+          <h2 class="tit">Vamos começar</h2>
+          <p class="sub">Preencha seus dados para acompanhar o andamento do seu projeto.</p>
+
+          <form method="post" id="cadastroForm" data-auth-form="criar">
+            <label>
+              <span class="lab">Seu nome completo</span>
+              <input name="novoUsuario" required autocomplete="name" placeholder="Maria Aparecida Souza">
+            </label>
+
+            <label>
+              <span class="lab">E-mail</span>
+              <input type="email" name="novoEmail" required autocomplete="email" placeholder="voce@email.com">
+            </label>
+
+            <label>
+              <span class="lab">Telefone <span class="opc">(opcional)</span></span>
+              <input type="tel" name="novoTelefone" autocomplete="tel" placeholder="(11) 98291-6734">
+            </label>
+
+            <label>
+              <span class="lab">Criar senha</span>
+              <span class="pw">
+                <input type="password" name="novaSenha" required minlength="6" autocomplete="new-password" placeholder="Mínimo de 6 caracteres">
+                <button type="button" class="eye" aria-label="Mostrar senha">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </span>
+            </label>
+
+            <button class="btn wide lg" type="submit">Criar minha conta</button>
+          </form>
+
+          <p class="troca">Já tem cadastro? <button type="button" class="link" data-go="entrar">Entrar</button></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 </main>
 
 <!-- rodapé ---------------------------------------------------------------- -->
