@@ -142,6 +142,43 @@ $telefone = $u["telefone"];
 
 $erro = "";
 
+// Salva a resposta do administrador para o cliente.
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["enviar_resposta"])
+) {
+    $idServico = filter_var(
+        $_POST["id_servico"] ?? "",
+        FILTER_VALIDATE_INT
+    );
+
+    $resposta = trim($_POST["resposta"] ?? "");
+
+    if (!$idServico || $resposta === "") {
+        die("Informe uma resposta válida.");
+    }
+
+    $rResposta = pg_query_params(
+        $conexao,
+        "UPDATE servicos
+         SET resposta = $1
+         WHERE id_servicos = $2",
+        array($resposta, $idServico)
+    );
+
+    if (!$rResposta) {
+        error_log(
+            "Erro ao salvar resposta: "
+            . pg_last_error($conexao)
+        );
+
+        die("Não foi possível salvar a resposta.");
+    }
+
+    header("Location: area_administrador.php");
+    exit;
+}
+
 // Altera o status de uma solicitação.
 if (
     $_SERVER["REQUEST_METHOD"] === "POST" &&
@@ -271,6 +308,7 @@ function buscarServicos($conexao, $status)
             s.tipo_projeto,
             s.endereco,
             s.descricao AS solicitacao,
+            s.resposta,
             s.status
          FROM servicos s
          INNER JOIN usuarios u
@@ -420,6 +458,43 @@ function mostraTabelaAdmin(
                 )
             )
             . '</p>';
+
+            // Formulário para o administrador responder ao cliente.
+            echo '<div class="att">';
+            echo '<span class="lab">Resposta ao cliente</span>';
+
+            echo '<form method="post">';
+
+            echo '<input
+                type="hidden"
+                name="id_servico"
+                value="' . $idServico . '"
+            >';
+
+            echo '<textarea
+                name="resposta"
+                rows="5"
+                maxlength="5000"
+                placeholder="Escreva o retorno técnico, o prazo do estudo preliminar e os próximos passos..."
+                required>'
+                . htmlspecialchars(
+                    $s["resposta"] ?? "",
+                    ENT_QUOTES,
+                    "UTF-8"
+                )
+                . '</textarea>';
+
+            echo '<button
+                class="btn sm"
+                type="submit"
+                name="enviar_resposta"
+                value="1"
+            >
+                Enviar resposta
+            </button>';
+
+            echo '</form>';
+            echo '</div>';
 
         // Lista os anexos enviados pelo cliente.
         echo '<div class="att">';
