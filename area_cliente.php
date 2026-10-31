@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-// Encerra a sessão e retorna à página inicial.
+// Sair da conta
 if (isset($_GET["sair"])) {
     session_unset();
     session_destroy();
@@ -10,7 +10,7 @@ if (isset($_GET["sair"])) {
     exit;
 }
 
-// Verifica se o usuário está autenticado como cliente.
+// Verificar se o usuário está autenticado e é CLIENTE
 if (
     !isset($_SESSION["usuario"], $_SESSION["email"]) ||
     !isset($_SESSION["tipo_usuario"]) ||
@@ -20,7 +20,7 @@ if (
     exit;
 }
 
-// Conexão com o banco de dados Neon.
+// Conexão com o banco de dados Neon
 $databaseUrl = getenv("DATABASE_URL");
 $conexao = $databaseUrl ? pg_connect($databaseUrl) : false;
 
@@ -28,18 +28,18 @@ if (!$conexao) {
     die("Erro ao conectar ao banco de dados.");
 }
 
-// Configurações do Supabase Storage.
+// Configurações do Supabase
 $supabaseUrl = rtrim(getenv("SUPABASE_URL") ?: "", "/");
 $supabaseKey = getenv("SUPABASE_SERVICE_ROLE_KEY") ?: "";
 $nomeBucket = "anexo-servicos";
 
-// Busca os dados do cliente autenticado.
+// Buscar informações do usuário
 $resultadoUsuario = pg_query_params(
     $conexao,
     "SELECT id_usuarios, nome, email, senha, telefone
      FROM usuarios
      WHERE email = $1
-       AND tipo_usuario = 'CLIENTE'",
+     AND tipo_usuario = 'CLIENTE'",
     array($_SESSION["email"])
 );
 
@@ -55,7 +55,7 @@ $email = $dadosUsuario["email"];
 $senha = $dadosUsuario["senha"];
 $telefone = $dadosUsuario["telefone"];
 
-// Gera um link temporário para acessar um anexo privado do Supabase.
+// Gerar URL assinada para acessar arquivos do Supabase
 function urlAssinadaSupabase(
     $supabaseUrl,
     $supabaseKey,
@@ -85,14 +85,17 @@ function urlAssinadaSupabase(
 
     curl_setopt_array($curl, array(
         CURLOPT_POST => true,
+
         CURLOPT_HTTPHEADER => array(
             "apikey: " . $supabaseKey,
             "Authorization: Bearer " . $supabaseKey,
             "Content-Type: application/json"
         ),
-        CURLOPT_POSTFIELDS => json_encode(
-            array("expiresIn" => 3600)
-        ),
+
+        CURLOPT_POSTFIELDS => json_encode(array(
+            "expiresIn" => 3600
+        )),
+
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 30
@@ -142,9 +145,10 @@ function urlAssinadaSupabase(
     return $supabaseUrl . "/storage/v1/" . ltrim($link, "/");
 }
 
+// Mensagem de erro da página
 $erroPagina = "";
 
-// Atualiza os dados cadastrais do cliente.
+// Atualizar informações do cliente
 if (
     $_SERVER["REQUEST_METHOD"] === "POST" &&
     isset($_POST["salvar"])
@@ -157,7 +161,6 @@ if (
     if ($novoNome === "" || $novoEmail === "") {
         $erroPagina = "Nome e e-mail são obrigatórios.";
     } else {
-        // Mantém o telefone atual se o campo ficar vazio.
         if ($novoTelefone === "") {
             $novoTelefone = $telefone;
         }
@@ -166,11 +169,9 @@ if (
             $r = pg_query_params(
                 $conexao,
                 "UPDATE usuarios
-                 SET nome = $1,
-                     email = $2,
-                     telefone = $3
+                 SET nome = $1, email = $2, telefone = $3
                  WHERE id_usuarios = $4
-                   AND tipo_usuario = 'CLIENTE'",
+                 AND tipo_usuario = 'CLIENTE'",
                 array(
                     $novoNome,
                     $novoEmail,
@@ -182,12 +183,9 @@ if (
             $r = pg_query_params(
                 $conexao,
                 "UPDATE usuarios
-                 SET nome = $1,
-                     email = $2,
-                     senha = $3,
-                     telefone = $4
+                 SET nome = $1, email = $2, senha = $3, telefone = $4
                  WHERE id_usuarios = $5
-                   AND tipo_usuario = 'CLIENTE'",
+                 AND tipo_usuario = 'CLIENTE'",
                 array(
                     $novoNome,
                     $novoEmail,
@@ -206,8 +204,7 @@ if (
             exit;
         }
 
-        $erroPagina =
-            "Não foi possível atualizar. Verifique se o e-mail já está cadastrado.";
+        $erroPagina = "Não foi possível atualizar. Verifique se o e-mail já está cadastrado.";
 
         error_log(
             "Erro ao atualizar usuário cliente: "
@@ -216,7 +213,7 @@ if (
     }
 }
 
-// Processa uma nova solicitação de serviço.
+// Criar uma nova solicitação de serviço
 if (
     $_SERVER["REQUEST_METHOD"] === "POST" &&
     isset($_POST["solicitar_servico"])
@@ -241,9 +238,9 @@ if (
         die("A configuração do Supabase não foi encontrada.");
     }
 
+    // Formatos de arquivos permitidos
     $arquivos = array();
 
-    // Tipos de arquivo permitidos.
     $permitidos = array(
         "image/jpeg" => "jpg",
         "image/png" => "png",
@@ -267,7 +264,7 @@ if (
         die("Você pode anexar no máximo 5 arquivos por solicitação.");
     }
 
-    // Valida cada arquivo recebido.
+    // Verificar os arquivos enviados
     for ($i = 0; $i < $total; $i++) {
         $err = $_FILES["anexos"]["error"][$i];
 
@@ -305,9 +302,10 @@ if (
         );
     }
 
-    // Inicia a transação no banco de dados.
+    // Iniciar transação no banco de dados
     pg_query($conexao, "BEGIN");
 
+    // Registrar solicitação
     $rServico = pg_query_params(
         $conexao,
         "INSERT INTO servicos (
@@ -347,7 +345,7 @@ if (
     $enviados = array();
     $falhou = false;
 
-    // Envia os anexos para o Supabase e registra seus caminhos no Neon.
+    // Enviar arquivos para o Supabase
     foreach ($arquivos as $arq) {
         $nomeArmazenado = bin2hex(random_bytes(16))
             . "."
@@ -365,10 +363,7 @@ if (
             . "/"
             . implode(
                 "/",
-                array_map(
-                    "rawurlencode",
-                    explode("/", $caminho)
-                )
+                array_map("rawurlencode", explode("/", $caminho))
             );
 
         $conteudo = file_get_contents($arq["tmp"]);
@@ -382,12 +377,14 @@ if (
 
         curl_setopt_array($curl, array(
             CURLOPT_POST => true,
+
             CURLOPT_HTTPHEADER => array(
                 "apikey: " . $supabaseKey,
                 "Authorization: Bearer " . $supabaseKey,
                 "Content-Type: " . $arq["mime"],
                 "x-upsert: false"
             ),
+
             CURLOPT_POSTFIELDS => $conteudo,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 15,
@@ -416,6 +413,7 @@ if (
 
         $enviados[] = $caminho;
 
+        // Registrar informações do anexo no Neon
         $rAnexo = pg_query_params(
             $conexao,
             "INSERT INTO anexos_servicos (
@@ -442,8 +440,7 @@ if (
         }
     }
 
-    // Se um envio falhar, tenta remover os arquivos já enviados
-    // e desfazer a solicitação no banco de dados.
+    // Tratar falhas no envio dos arquivos
     if ($falhou) {
         foreach ($enviados as $caminho) {
             $urlDel = $supabaseUrl
@@ -452,20 +449,19 @@ if (
                 . "/"
                 . implode(
                     "/",
-                    array_map(
-                        "rawurlencode",
-                        explode("/", $caminho)
-                    )
+                    array_map("rawurlencode", explode("/", $caminho))
                 );
 
             $c = curl_init($urlDel);
 
             curl_setopt_array($c, array(
                 CURLOPT_CUSTOMREQUEST => "DELETE",
+
                 CURLOPT_HTTPHEADER => array(
                     "apikey: " . $supabaseKey,
                     "Authorization: Bearer " . $supabaseKey
                 ),
+
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 20
             ));
@@ -484,7 +480,7 @@ if (
             $conexao,
             "DELETE FROM servicos
              WHERE id_servicos = $1
-               AND id_usuario = $2",
+             AND id_usuario = $2",
             array($idServico, $idUsuario)
         );
 
@@ -496,14 +492,14 @@ if (
         );
     }
 
-    // Confirma a transação e retorna ao painel.
+    // Finalizar transação
     pg_query($conexao, "COMMIT");
 
     header("Location: area_cliente.php?sucesso=1");
     exit;
 }
 
-// Cancela uma solicitação que ainda não foi concluída.
+// Cancelar uma solicitação
 if (
     $_SERVER["REQUEST_METHOD"] === "POST" &&
     isset($_POST["cancelar_servico"])
@@ -519,9 +515,12 @@ if (
             "UPDATE servicos
              SET status = 'CANCELADO'
              WHERE id_servicos = $1
-               AND id_usuario = $2
-               AND status IN ('SOLICITADO', 'EM_ANALISE')",
-            array($idCancelar, $idUsuario)
+             AND id_usuario = $2
+             AND status IN ('SOLICITADO', 'EM_ANALISE')",
+            array(
+                $idCancelar,
+                $idUsuario
+            )
         );
 
         if (!$r) {
@@ -536,7 +535,8 @@ if (
     exit;
 }
 
-// Busca as solicitações do cliente.
+// Buscar solicitações do cliente
+// IMPORTANTE: agora a consulta também busca a coluna resposta
 $rServicos = pg_query_params(
     $conexao,
     "SELECT
@@ -544,7 +544,8 @@ $rServicos = pg_query_params(
         tipo_projeto,
         endereco,
         descricao,
-        status
+        status,
+        resposta
      FROM servicos
      WHERE id_usuario = $1
      ORDER BY id_servicos DESC",
@@ -555,7 +556,7 @@ if (!$rServicos) {
     die("Erro ao buscar seus serviços.");
 }
 
-// Busca os anexos associados às solicitações do cliente.
+// Buscar anexos das solicitações
 $anexosPorServico = array();
 
 $rAnexos = pg_query_params(
@@ -599,11 +600,7 @@ if ($rAnexos) {
     <title>Área do cliente · Um Pé de IDEIA</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link
-        rel="preconnect"
-        href="https://fonts.gstatic.com"
-        crossorigin
-    >
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <link
         href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@500&display=swap"
@@ -615,6 +612,7 @@ if ($rAnexos) {
 
 <body data-page="cliente">
 
+    <!-- Cabeçalho -->
     <header class="top">
         <div class="wrap bar">
 
@@ -635,10 +633,7 @@ if ($rAnexos) {
                     ← Voltar para a home
                 </a>
 
-                <a
-                    class="btn sm dk keep"
-                    href="area_cliente.php?sair=1"
-                >
+                <a class="btn sm dk keep" href="area_cliente.php?sair=1">
                     Sair
                 </a>
             </nav>
@@ -646,10 +641,13 @@ if ($rAnexos) {
         </div>
     </header>
 
+    <!-- Conteúdo principal -->
     <main class="page">
         <div class="wrap">
 
+            <!-- Informações da conta -->
             <div class="panel-top">
+
                 <div class="user">
 
                     <span class="avatar">
@@ -658,33 +656,18 @@ if ($rAnexos) {
                             mb_strtoupper(
                                 mb_substr($nome, 0, 1, "UTF-8"),
                                 "UTF-8"
-                            ),
-                            ENT_QUOTES,
-                            "UTF-8"
+                            )
                         );
                         ?>
                     </span>
 
                     <div>
                         <b>
-                            Olá,
-                            <?php
-                            echo htmlspecialchars(
-                                $nome,
-                                ENT_QUOTES,
-                                "UTF-8"
-                            );
-                            ?>
+                            Olá, <?php echo htmlspecialchars($nome); ?>
                         </b>
 
                         <span class="lab">
-                            <?php
-                            echo htmlspecialchars(
-                                $email,
-                                ENT_QUOTES,
-                                "UTF-8"
-                            );
-                            ?>
+                            <?php echo htmlspecialchars($email); ?>
                         </span>
                     </div>
 
@@ -696,27 +679,29 @@ if ($rAnexos) {
                 >
                     Editar dados
                 </a>
+
             </div>
 
+            <!-- Mensagens da página -->
             <?php if (isset($_GET["sucesso"])): ?>
+
                 <p class="msg ok">
                     Solicitação enviada com sucesso.
                 </p>
+
             <?php endif; ?>
 
             <?php if ($erroPagina): ?>
+
                 <p class="msg err">
-                    <?php
-                    echo htmlspecialchars(
-                        $erroPagina,
-                        ENT_QUOTES,
-                        "UTF-8"
-                    );
-                    ?>
+                    <?php echo htmlspecialchars($erroPagina); ?>
                 </p>
+
             <?php endif; ?>
 
+            <!-- Formulário de edição -->
             <?php if (isset($_GET["editar"])): ?>
+
                 <section class="sheet pad-lg edit-box">
 
                     <span class="lab ac">Minha conta</span>
@@ -729,14 +714,13 @@ if ($rAnexos) {
                             <span class="lab">Nome</span>
 
                             <input
-                                type="text"
                                 name="nome"
                                 value="<?php
-                                echo htmlspecialchars(
-                                    $nome,
-                                    ENT_QUOTES,
-                                    "UTF-8"
-                                );
+                                    echo htmlspecialchars(
+                                        $nome,
+                                        ENT_QUOTES,
+                                        "UTF-8"
+                                    );
                                 ?>"
                                 required
                             >
@@ -749,11 +733,11 @@ if ($rAnexos) {
                                 type="email"
                                 name="email"
                                 value="<?php
-                                echo htmlspecialchars(
-                                    $email,
-                                    ENT_QUOTES,
-                                    "UTF-8"
-                                );
+                                    echo htmlspecialchars(
+                                        $email,
+                                        ENT_QUOTES,
+                                        "UTF-8"
+                                    );
                                 ?>"
                                 required
                             >
@@ -763,14 +747,13 @@ if ($rAnexos) {
                             <span class="lab">Telefone</span>
 
                             <input
-                                type="text"
                                 name="telefone"
                                 value="<?php
-                                echo htmlspecialchars(
-                                    $telefone ?? "",
-                                    ENT_QUOTES,
-                                    "UTF-8"
-                                );
+                                    echo htmlspecialchars(
+                                        $telefone ?? "",
+                                        ENT_QUOTES,
+                                        "UTF-8"
+                                    );
                                 ?>"
                             >
                         </label>
@@ -785,29 +768,24 @@ if ($rAnexos) {
                             >
                         </label>
 
-                        <button
-                            class="btn"
-                            name="salvar"
-                            value="1"
-                            type="submit"
-                        >
+                        <button class="btn" name="salvar" value="1">
                             Salvar alterações
                         </button>
 
-                        <a
-                            class="btn out"
-                            href="area_cliente.php"
-                        >
+                        <a class="btn out" href="area_cliente.php">
                             Cancelar
                         </a>
 
                     </form>
+
                 </section>
+
             <?php endif; ?>
 
+            <!-- Área de solicitações -->
             <div class="dash">
 
-                <!-- Formulário para criar uma solicitação. -->
+                <!-- Formulário de nova solicitação -->
                 <section class="sheet pad-lg">
 
                     <span class="lab ac">Nova solicitação</span>
@@ -856,7 +834,6 @@ if ($rAnexos) {
 
                             <input
                                 id="localProjeto"
-                                type="text"
                                 name="endereco"
                                 placeholder="Cidade · Estado ou endereço completo"
                                 required
@@ -890,25 +867,27 @@ if ($rAnexos) {
                             class="btn wide lg"
                             name="solicitar_servico"
                             value="1"
-                            type="submit"
                         >
                             Enviar solicitação
                         </button>
 
                     </form>
+
                 </section>
 
-                <!-- Lista as solicitações já enviadas. -->
+                <!-- Acompanhamento das solicitações -->
                 <section>
 
                     <div class="head-2">
+
                         <span class="lab ac">Acompanhamento</span>
 
                         <h2>Minhas solicitações</h2>
 
                         <p>
-                            Confira o status e os arquivos enviados.
+                            Confira o status, as respostas e os arquivos enviados.
                         </p>
+
                     </div>
 
                     <?php if (pg_num_rows($rServicos) > 0): ?>
@@ -917,19 +896,19 @@ if ($rAnexos) {
 
                             <article class="req">
 
+                                <!-- Identificação e status -->
                                 <div class="r1">
 
                                     <span class="lab">
-                                        Solicitação #
-                                        <?php echo (int) $s["id_servicos"]; ?>
+                                        Solicitação #<?php
+                                            echo (int) $s["id_servicos"];
+                                        ?>
                                     </span>
 
                                     <span class="st <?php
-                                    echo htmlspecialchars(
-                                        strtolower($s["status"]),
-                                        ENT_QUOTES,
-                                        "UTF-8"
-                                    );
+                                        echo htmlspecialchars(
+                                            strtolower($s["status"])
+                                        );
                                     ?>">
                                         <?php
                                         echo htmlspecialchars(
@@ -937,15 +916,14 @@ if ($rAnexos) {
                                                 "_",
                                                 " ",
                                                 $s["status"]
-                                            ),
-                                            ENT_QUOTES,
-                                            "UTF-8"
+                                            )
                                         );
                                         ?>
                                     </span>
 
                                 </div>
 
+                                <!-- Informações do projeto -->
                                 <p class="meta">
                                     <b>Tipo de projeto:</b>
 
@@ -970,18 +948,50 @@ if ($rAnexos) {
                                     ?>
                                 </p>
 
+                                <!-- Descrição enviada pelo cliente -->
                                 <p class="desc">
                                     <?php
                                     echo nl2br(
-                                        htmlspecialchars(
-                                            $s["descricao"],
-                                            ENT_QUOTES,
-                                            "UTF-8"
-                                        )
+                                        htmlspecialchars($s["descricao"])
                                     );
                                     ?>
                                 </p>
 
+                                <!-- Resposta do administrador -->
+                                <div class="att">
+
+                                    <span class="lab">
+                                        Resposta do escritório
+                                    </span>
+
+                                    <div class="response-content">
+
+                                        <?php if (!empty($s["resposta"])): ?>
+
+                                            <?php
+                                            echo nl2br(
+                                                htmlspecialchars(
+                                                    $s["resposta"],
+                                                    ENT_QUOTES,
+                                                    "UTF-8"
+                                                )
+                                            );
+                                            ?>
+
+                                        <?php else: ?>
+
+                                            <p class="hint">
+                                                O escritório ainda não respondeu
+                                                a esta solicitação.
+                                            </p>
+
+                                        <?php endif; ?>
+
+                                    </div>
+
+                                </div>
+
+                                <!-- Arquivos anexados -->
                                 <div class="att">
 
                                     <span class="lab">
@@ -991,22 +1001,29 @@ if ($rAnexos) {
                                     <div class="attachment-links">
 
                                         <?php
-                                        $idAtual = $s["id_servicos"];
+                                        if (
+                                            !empty(
+                                                $anexosPorServico[$s["id_servicos"]]
+                                            )
+                                        ):
                                         ?>
 
-                                        <?php if (!empty($anexosPorServico[$idAtual])): ?>
-
-                                            <?php foreach ($anexosPorServico[$idAtual] as $a): ?>
+                                            <?php
+                                            foreach (
+                                                $anexosPorServico[$s["id_servicos"]]
+                                                as $a
+                                            ):
+                                            ?>
 
                                                 <?php if ($a["url"]): ?>
 
                                                     <a
                                                         href="<?php
-                                                        echo htmlspecialchars(
-                                                            $a["url"],
-                                                            ENT_QUOTES,
-                                                            "UTF-8"
-                                                        );
+                                                            echo htmlspecialchars(
+                                                                $a["url"],
+                                                                ENT_QUOTES,
+                                                                "UTF-8"
+                                                            );
                                                         ?>"
                                                         target="_blank"
                                                         rel="noopener noreferrer"
@@ -1025,9 +1042,7 @@ if ($rAnexos) {
                                                     <span>
                                                         <?php
                                                         echo htmlspecialchars(
-                                                            $a["nome"],
-                                                            ENT_QUOTES,
-                                                            "UTF-8"
+                                                            $a["nome"]
                                                         );
                                                         ?>
                                                         (link indisponível)
@@ -1046,8 +1061,10 @@ if ($rAnexos) {
                                         <?php endif; ?>
 
                                     </div>
+
                                 </div>
 
+                                <!-- Cancelar solicitação -->
                                 <?php
                                 if (
                                     $s["status"] === "SOLICITADO" ||
@@ -1064,7 +1081,7 @@ if ($rAnexos) {
                                             type="hidden"
                                             name="id_servico"
                                             value="<?php
-                                            echo (int) $s["id_servicos"];
+                                                echo (int) $s["id_servicos"];
                                             ?>"
                                         >
 
@@ -1072,7 +1089,6 @@ if ($rAnexos) {
                                             class="btn out sm"
                                             name="cancelar_servico"
                                             value="1"
-                                            type="submit"
                                         >
                                             Cancelar solicitação
                                         </button>
@@ -1108,7 +1124,9 @@ if ($rAnexos) {
         </div>
     </main>
 
+    <!-- Rodapé -->
     <footer>
+
         <div class="wrap footer-grid">
 
             <div>
@@ -1124,9 +1142,13 @@ if ($rAnexos) {
             <div>
                 <h4>Navegar</h4>
 
-                <a href="index.php">Início</a>
+                <a href="index.php">
+                    Início
+                </a>
 
-                <a href="index.php#projetos">Galeria</a>
+                <a href="index.php#projetos">
+                    Galeria
+                </a>
             </div>
 
             <div>
@@ -1138,6 +1160,7 @@ if ($rAnexos) {
             </div>
 
         </div>
+
     </footer>
 
     <script src="script.js"></script>
