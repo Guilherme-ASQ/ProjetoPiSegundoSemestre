@@ -116,6 +116,36 @@ function adminUrlAssinada($base, $key, $bucket, $path)
     return $base . "/storage/v1/" . ltrim($link, "/");
 }
 
+// Gera o link do WhatsApp do cliente.
+function adminLinkWhatsApp($telefone, $nome)
+{
+    if (!$telefone) {
+        return null;
+    }
+
+    // Remove espaços, parênteses, traços e outros caracteres.
+    $numero = preg_replace('/\D/', '', $telefone);
+
+    // Adiciona o código do Brasil caso ele não esteja presente.
+    if (strlen($numero) === 10 || strlen($numero) === 11) {
+        $numero = "55" . $numero;
+    }
+
+    // Verifica se o número possui um tamanho válido.
+    if (strlen($numero) < 12 || strlen($numero) > 13) {
+        return null;
+    }
+
+    $mensagem = "Olá, " . $nome
+        . "! Aqui é da equipe Um Pé de IDEIA. "
+        . "Estou entrando em contato sobre sua solicitação de serviço.";
+
+    return "https://wa.me/"
+        . $numero
+        . "?text="
+        . rawurlencode($mensagem);
+}
+
 // Busca os dados do administrador autenticado.
 $usuarioLogado = $_SESSION["email"];
 
@@ -417,7 +447,7 @@ function mostraTabelaAdmin(
             . '</h3>';
 
         echo '<p class="meta">'
-            . htmlspecialchars($s["email"], ENT_QUOTES, "UTF-8");
+        . htmlspecialchars($s["email"], ENT_QUOTES, "UTF-8");
 
         if ($s["telefone"]) {
             echo ' · '
@@ -429,6 +459,40 @@ function mostraTabelaAdmin(
         }
 
         echo '</p>';
+
+        // Cria o link do WhatsApp do cliente.
+        $linkWhatsApp = adminLinkWhatsApp(
+            $s["telefone"],
+            $s["nome"]
+        );
+
+        // Exibe o botão do WhatsApp.
+        if ($linkWhatsApp) {
+
+            echo '<a
+                class="btn sm whatsapp"
+                href="' . htmlspecialchars(
+                    $linkWhatsApp,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) . '"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                <span>WhatsApp</span>
+            </a>';
+
+        } else {
+
+            echo '<button
+                class="btn sm whatsapp"
+                type="button"
+                disabled
+            >
+                Sem WhatsApp
+            </button>';
+
+        }
 
         echo '<p class="meta">';
         echo '<b>Tipo de projeto:</b> '
