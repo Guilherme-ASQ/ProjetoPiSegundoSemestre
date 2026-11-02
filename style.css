@@ -574,29 +574,76 @@ select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns=
    externo; com transform ele vira a referência do position:fixed interno. */
 #vlibras-access-wrapper{position:fixed;top:0;right:0;width:0;height:0;z-index:2147483639;transform:translateY(-22vh)}
 
-/* Botão de WhatsApp na área do administrador */
+/* ==========================================================================
+   BOTÃO DE WHATSAPP — ÁREA DO ADMINISTRADOR
+   ========================================================================== */
+
 .btn.whatsapp {
+    --bg-b: #25d366;
+    --fg-b: var(--ink);
+    --sh-b: var(--dark);
+
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    background: #25D366;
-    color: #ffffff;
-    border: 1px solid #25D366;
+    gap: 9px;
+
+    background: var(--bg-b);
+    color: var(--fg-b);
+
+    font: 500 12.5px/1 var(--f-mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+
+    padding: 15px 24px;
+
+    border: 0;
+    border-radius: var(--r-sm);
+
+    box-shadow: 3px 3px 0 var(--sh-b);
+
     text-decoration: none;
-    margin-top: 10px;
     cursor: pointer;
+    white-space: nowrap;
+
+    transition:
+        transform .18s var(--ease),
+        box-shadow .18s var(--ease),
+        background .18s;
 }
 
-.btn.whatsapp:hover {
+.btn.whatsapp:hover:not(:disabled) {
     background: #1ebe5d;
-    border-color: #1ebe5d;
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--sh-b);
 }
 
+.btn.whatsapp:active:not(:disabled) {
+    transform: translate(3px, 3px);
+    box-shadow: 0 0 0 var(--sh-b);
+}
+
+.btn.whatsapp svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+}
+
+/* WhatsApp indisponível */
 .btn.whatsapp:disabled {
     background: #a8dfbb;
-    border-color: #a8dfbb;
-    color: #777777;
+    color: #777;
+    border: 0;
+    box-shadow: 3px 3px 0 #999;
     cursor: not-allowed;
-    opacity: 0.8;
+    opacity: .8;
+    pointer-events: none;
+}
+
+/* Ajuste para telas pequenas */
+@media (max-width: 560px) {
+    .btn.whatsapp {
+        width: 100%;
+        justify-content: center;
+    }
 }
