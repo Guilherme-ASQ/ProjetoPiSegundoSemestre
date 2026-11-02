@@ -122,7 +122,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       <a href="#contato">Contato</a>
       <a class="btn sm" href="#acesso">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Área do cliente
+        Login
       </a>
       <button class="burger" id="burger" aria-expanded="false" aria-controls="drawer" aria-label="Abrir menu"><i></i><i></i><i></i></button>
     </nav>
@@ -357,7 +357,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           loading="lazy"
         >
         <div class="ov">
-          <span class="lab">Área do cliente</span>
+          <span class="lab"></span>
           <h2>Acompanhe seu projeto em cada etapa.</h2>
           <p>Envie sua solicitação, compartilhe arquivos e acompanhe as respostas da equipe.</p>
           <ul>
@@ -496,7 +496,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <a href="mailto:contato@umpedeideia.com.br">contato@umpedeideia.com.br</a>
         <a href="tel:+5511982916734">(11) 98291-6734</a>
         <a href="#acesso">Área do cliente</a>
-        <a href="arquiteto.html">Acesso do arquiteto</a>
+        <!--<a href="arquiteto.html">Acesso do arquiteto</a>-->
       </div>
     </div>
     <div class="end">
