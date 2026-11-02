@@ -402,7 +402,7 @@ if (!$rSolicitados || !$rAnalise || !$rConcluidos) {
     die("Erro ao carregar os serviços.");
 }
 
-// Exibe uma coluna com as solicitações de determinado status.
+// Exibe as solicitações e os botões de ação do administrador.
 function mostraTabelaAdmin(
     $resultado,
     $titulo,
@@ -413,7 +413,11 @@ function mostraTabelaAdmin(
     $bucket
 ) {
     echo '<section class="admin-col">';
-    echo '<h2>' . htmlspecialchars($titulo, ENT_QUOTES, "UTF-8") . '</h2>';
+
+    echo '<h2>'
+        . htmlspecialchars($titulo, ENT_QUOTES, "UTF-8")
+        . '</h2>';
+
     echo '<div class="admin-list">';
 
     if (pg_num_rows($resultado) === 0) {
@@ -423,11 +427,36 @@ function mostraTabelaAdmin(
     }
 
     while ($s = pg_fetch_assoc($resultado)) {
+
         $idServico = (int) $s["id_servico"];
+
+        // Prepara o telefone para o link do WhatsApp.
+        $telefone = preg_replace(
+            '/\D+/',
+            '',
+            $s["telefone"] ?? ""
+        );
+
+        // Adiciona o código do Brasil quando necessário.
+        if (
+            strlen($telefone) === 10 ||
+            strlen($telefone) === 11
+        ) {
+            $telefone = "55" . $telefone;
+        }
+
+        // Verifica se o número tem formato válido.
+        $temWhatsApp = (
+            strlen($telefone) >= 12 &&
+            strlen($telefone) <= 13 &&
+            substr($telefone, 0, 2) === "55"
+        );
 
         echo '<article class="req">';
 
+        // Identificação da solicitação.
         echo '<div class="r1">';
+
         echo '<span class="lab">Solicitação #'
             . $idServico
             . '</span>';
@@ -442,15 +471,26 @@ function mostraTabelaAdmin(
 
         echo '</div>';
 
+        // Nome do cliente.
         echo '<h3>'
-            . htmlspecialchars($s["nome"], ENT_QUOTES, "UTF-8")
+            . htmlspecialchars(
+                $s["nome"],
+                ENT_QUOTES,
+                "UTF-8"
+            )
             . '</h3>';
 
-        echo '<p class="meta">'
-        . htmlspecialchars($s["email"], ENT_QUOTES, "UTF-8");
+        // E-mail e telefone.
+        echo '<p class="meta">';
 
-        if ($s["telefone"]) {
-            echo ' · '
+        echo htmlspecialchars(
+            $s["email"],
+            ENT_QUOTES,
+            "UTF-8"
+        );
+
+        if (!empty($s["telefone"])) {
+            echo ' &nbsp; '
                 . htmlspecialchars(
                     $s["telefone"],
                     ENT_QUOTES,
@@ -460,41 +500,9 @@ function mostraTabelaAdmin(
 
         echo '</p>';
 
-        // Cria o link do WhatsApp do cliente.
-        $linkWhatsApp = adminLinkWhatsApp(
-            $s["telefone"],
-            $s["nome"]
-        );
-
-        // Exibe o botão do WhatsApp.
-        if ($linkWhatsApp) {
-
-            echo '<a
-                class="btn sm whatsapp"
-                href="' . htmlspecialchars(
-                    $linkWhatsApp,
-                    ENT_QUOTES,
-                    "UTF-8"
-                ) . '"
-                target="_blank"
-                rel="noopener noreferrer"
-            >
-                <span>WhatsApp</span>
-            </a>';
-
-        } else {
-
-            echo '<button
-                class="btn sm whatsapp"
-                type="button"
-                disabled
-            >
-                Sem WhatsApp
-            </button>';
-
-        }
-
+        // Tipo de projeto e endereço.
         echo '<p class="meta">';
+
         echo '<b>Tipo de projeto:</b> '
             . htmlspecialchars(
                 $s["tipo_projeto"] ?? "Não informado",
@@ -513,6 +521,7 @@ function mostraTabelaAdmin(
 
         echo '</p>';
 
+        // Descrição enviada pelo cliente.
         echo '<p class="desc">'
             . nl2br(
                 htmlspecialchars(
@@ -523,46 +532,131 @@ function mostraTabelaAdmin(
             )
             . '</p>';
 
-            // Formulário para o administrador responder ao cliente.
-            echo '<div class="att">';
-            echo '<span class="lab">Resposta ao cliente</span>';
+        // Campo de resposta ao cliente.
+        echo '<div class="att response-area">';
 
-            echo '<form method="post">';
+        echo '<span class="lab">RESPOSTA AO CLIENTE</span>';
 
-            echo '<input
-                type="hidden"
-                name="id_servico"
-                value="' . $idServico . '"
-            >';
+        echo '<form method="post" class="response-form">';
 
-            echo '<textarea
-                name="resposta"
-                rows="5"
-                maxlength="5000"
-                placeholder="Escreva o retorno técnico, o prazo do estudo preliminar e os próximos passos..."
-                required>'
+        echo '<input
+            type="hidden"
+            name="id_servico"
+            value="' . $idServico . '"
+        >';
+
+        echo '<textarea
+            name="resposta"
+            rows="5"
+            maxlength="5000"
+            placeholder="Escreva o retorno técnico, o prazo do estudo preliminar e os próximos passos..."
+            required>'
+            . htmlspecialchars(
+                $s["resposta"] ?? "",
+                ENT_QUOTES,
+                "UTF-8"
+            )
+            . '</textarea>';
+
+        echo '<div class="acts2">';
+
+        echo '<button
+            class="btn sm response-send"
+            type="submit"
+            name="enviar_resposta"
+            value="1"
+        >
+            ENVIAR RESPOSTA
+        </button>';
+
+        // Botão de WhatsApp.
+        if ($temWhatsApp) {
+
+            $linkWhatsApp = "https://wa.me/" . $telefone;
+
+            echo '<a
+                class="btn sm whatsapp"
+                href="'
                 . htmlspecialchars(
-                    $s["resposta"] ?? "",
+                    $linkWhatsApp,
                     ENT_QUOTES,
                     "UTF-8"
                 )
-                . '</textarea>';
+                . '"
+                target="_blank"
+                rel="noopener noreferrer"
+            >';
+
+            // Ícone do WhatsApp.
+            echo '<svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+            >
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8
+                8.5 8.5 0 0 1-7.6 4.7
+                8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7
+                a8.38 8.38 0 0 1-.9-3.8
+                8.5 8.5 0 0 1 4.7-7.6
+                8.38 8.38 0 0 1 3.8-.9h.5
+                a8.48 8.48 0 0 1 8 8v.5z"/>
+                <path d="M9 9a5 5 0 0 0 6 6"/>
+            </svg>';
+
+            echo ' WHATSAPP DO CLIENTE';
+
+            echo '</a>';
+
+        } else {
 
             echo '<button
-                class="btn sm"
-                type="submit"
-                name="enviar_resposta"
-                value="1"
+                class="btn sm whatsapp whatsapp-disabled"
+                type="button"
+                disabled
+            >';
+
+            echo '<svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
             >
-                Enviar resposta
-            </button>';
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8
+                8.5 8.5 0 0 1-7.6 4.7
+                8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7
+                a8.38 8.38 0 0 1-.9-3.8
+                8.5 8.5 0 0 1 4.7-7.6
+                8.38 8.38 0 0 1 3.8-.9h.5
+                a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>';
 
-            echo '</form>';
-            echo '</div>';
+            echo ' SEM WHATSAPP';
 
-        // Lista os anexos enviados pelo cliente.
+            echo '</button>';
+        }
+
+        echo '</div>'; // Fecha acts2
+        echo '</form>';
+        echo '</div>'; // Fecha response-area
+
+        // Anexos enviados pelo cliente.
         echo '<div class="att">';
-        echo '<span class="lab">Anexos do cliente</span>';
+
+        echo '<span class="lab">ANEXOS DO CLIENTE</span>';
+
         echo '<div class="attachment-links">';
 
         $anexos = buscarAnexosAdmin(
@@ -578,7 +672,9 @@ function mostraTabelaAdmin(
         }
 
         foreach ($anexos as $a) {
+
             if ($a["url"]) {
+
                 echo '<a
                     target="_blank"
                     rel="noopener noreferrer"
@@ -595,7 +691,9 @@ function mostraTabelaAdmin(
                         "UTF-8"
                     )
                     . '</a><br>';
+
             } else {
+
                 echo '<span>'
                     . htmlspecialchars(
                         $a["nome"],
@@ -609,8 +707,9 @@ function mostraTabelaAdmin(
         echo '</div>';
         echo '</div>';
 
-        // Ações disponíveis para cada etapa.
+        // Botões para alterar o status da solicitação.
         if ($tipo === "SOLICITADO") {
+
             echo '
                 <form method="post">
                     <input
@@ -626,20 +725,22 @@ function mostraTabelaAdmin(
                     >
 
                     <button
-                        class="btn wide sm"
+                        class="btn sm"
                         name="alterar_status"
                         value="1"
                         type="submit"
                     >
-                        Iniciar análise
+                        MARCAR EM ANÁLISE
                     </button>
                 </form>
             ';
         }
 
         if ($tipo === "EM_ANALISE") {
+
             echo '
                 <div class="acts2">
+
                     <form method="post">
                         <input
                             type="hidden"
@@ -659,7 +760,7 @@ function mostraTabelaAdmin(
                             value="1"
                             type="submit"
                         >
-                            Concluir serviço
+                            CONCLUIR SERVIÇO
                         </button>
                     </form>
 
@@ -685,9 +786,10 @@ function mostraTabelaAdmin(
                             value="1"
                             type="submit"
                         >
-                            Cancelar serviço
+                            CANCELAR SERVIÇO
                         </button>
                     </form>
+
                 </div>
             ';
         }
@@ -698,6 +800,8 @@ function mostraTabelaAdmin(
     echo '</div>';
     echo '</section>';
 }
+
+//FIM DO CÒDIGO PHP
 ?>
 
 <!DOCTYPE html>
