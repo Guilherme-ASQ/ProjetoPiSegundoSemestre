@@ -81,7 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <title>Um Pé de IDEIA Arquitetura e Design</title>
 <meta name="description" content="Escritório de arquitetura e design formado por três arquitetos: croquis à mão, projeto executivo e acompanhamento de obra. Peça seu orçamento pela área do cliente.">
 <meta name="theme-color" content="#f7f5f1">
-<link rel="icon" href="https://res.cloudinary.com/p2srhjwx/image/upload/v1792142855/Logo_Um_P%C3%89_delDEIA.jpg">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='22' fill='%23f5efe7'/%3E%3Cpath d='M34 96V32h18v24h18V32h18v64H70V72H52v24H34zm50 0V32h18v64H84z' fill='%23231f1c'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet">
