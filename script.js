@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const page = document.body.dataset.page;
 
-/* 01. INTERFACE BASE */
+/* 01. INTERFACE BASE, HEADER, MENU MÓVEL E ANIMAÇÕES */
 (() => {
   const ano = $('#ano');
   if (ano) ano.textContent = new Date().getFullYear();
@@ -61,7 +61,7 @@ const page = document.body.dataset.page;
   }
 })();
 
-/* 02. LIGHTBOX */
+/* 02. LIGHTBOX INTERATIVO COM SUPORTE A NAVEGAÇÃO E TECLADO */
 const LB = (() => {
   const box = $('#lb');
   if (!box) return { open: () => {} };
@@ -103,7 +103,7 @@ const LB = (() => {
   return { open: abre };
 })();
 
-/* 03. HOME: FILTROS E COMPARADOR */
+/* 03. GALERIA DE PROJETOS E COMPARADOR (CROQUI X OBRA) */
 if (page === 'home') {
   const categorias = [
     { nome: 'Destaques', imagens: ['https://res.cloudinary.com/p2srhjwx/image/upload/v1792131151/PERDIZES0140.jpg', 'https://res.cloudinary.com/p2srhjwx/image/upload/v1792126245/RMB_7643-HDR.jpg', 'https://res.cloudinary.com/p2srhjwx/image/upload/v1792126246/Caf%C3%A9_sem_a_mesa.jpg'] },
@@ -164,7 +164,7 @@ if (page === 'home') {
   }
 }
 
-/* 04. ABAS E OLHO DE SENHA */
+/* 04. CONTROLADOR DE ABAS E OCULTAÇÃO/EXIBIÇÃO DE SENHAS */
 function mostrarAbaAutenticacao(aba) {
   $$('[data-auth-tab]').forEach(btn => {
     const ativo = btn.dataset.authTab === aba;
