@@ -108,7 +108,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["salvar"])) {
             $r = pg_query_params(
                 $conexao,
                 "UPDATE usuarios SET nome = $1, email = $2, senha = $3, telefone = $4 WHERE id_usuarios = $5 AND tipo_usuario = 'CLIENTE'",
-                array($novoNome, $novoEmail, $novaSenha, $novoTelefone, $idUsuario)
+                array($novoNome, $novoEmail, password_hash($novaSenha, PASSWORD_DEFAULT), $novoTelefone, $idUsuario)
             );
         }
         if ($r) {

@@ -9,6 +9,55 @@ if (isset($_GET["sair"])) {
 
 $mensagem = "";
 $erro = "";
+$tokenRedefinicao = trim($_GET["redefinir"] ?? "");
+$modoRecuperacao = isset($_GET["recuperar"]);
+
+if (isset($_GET["recuperacao"]) && $_GET["recuperacao"] === "solicitada") {
+  $mensagem = "Se o e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.";
+  $modoRecuperacao = true;
+}
+if (isset($_GET["redefinido"]) && $_GET["redefinido"] === "1") {
+  $mensagem = "Senha alterada. Agora você já pode entrar com a nova senha.";
+}
+
+function enviarEmailRecuperacao($destinatario, $link) {
+  $apiKey = getenv("RESEND_API_KEY") ?: "";
+  $remetente = getenv("MAIL_FROM") ?: "";
+  if (!$apiKey || !$remetente || !function_exists("curl_init")) return false;
+
+  $curl = curl_init("https://api.resend.com/emails");
+  if (!$curl) return false;
+  $corpo = "<p>Recebemos um pedido para redefinir a senha da sua conta Um Pé de IDEIA.</p>" .
+    "<p><a href=\"" . htmlspecialchars($link, ENT_QUOTES, "UTF-8") . "\">Criar uma nova senha</a></p>" .
+    "<p>O link expira em 30 minutos. Se você não pediu a redefinição, ignore esta mensagem.</p>";
+
+  curl_setopt_array($curl, array(
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => array(
+      "Authorization: Bearer " . $apiKey,
+      "Content-Type: application/json"
+    ),
+    CURLOPT_POSTFIELDS => json_encode(array(
+      "from" => $remetente,
+      "to" => array($destinatario),
+      "subject" => "Redefinição de senha · Um Pé de IDEIA",
+      "html" => $corpo
+    )),
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CONNECTTIMEOUT => 10,
+    CURLOPT_TIMEOUT => 20
+  ));
+
+  $resposta = curl_exec($curl);
+  $http = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+  if ($resposta === false || $http < 200 || $http >= 300) {
+    error_log("Falha ao enviar e-mail de redefinição: HTTP " . $http . " CURL " . curl_error($curl));
+    curl_close($curl);
+    return false;
+  }
+  curl_close($curl);
+  return true;
+}
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $databaseUrl = getenv("DATABASE_URL");
@@ -16,6 +65,96 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if (!$conexao) {
         $erro = "Não foi possível conectar ao banco de dados.";
+    } elseif (isset($_POST["solicitar_redefinicao"])) {
+      $email = trim($_POST["email"] ?? "");
+      $baseUrl = rtrim(getenv("APP_URL") ?: "", "/");
+      $partesUrl = $baseUrl ? parse_url($baseUrl) : false;
+      $configEmailOk = $baseUrl && $partesUrl && isset($partesUrl["scheme"], $partesUrl["host"]) &&
+        in_array(strtolower($partesUrl["scheme"]), array("http", "https"), true) &&
+        getenv("RESEND_API_KEY") && getenv("MAIL_FROM");
+
+      $criouTabela = pg_query($conexao, "CREATE TABLE IF NOT EXISTS recuperacao_senha (id_recuperacao BIGSERIAL PRIMARY KEY, id_usuario BIGINT NOT NULL, token_hash CHAR(64) NOT NULL UNIQUE, expira_em TIMESTAMPTZ NOT NULL, criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, usado BOOLEAN NOT NULL DEFAULT FALSE)");
+      if (!$criouTabela || !filter_var($email, FILTER_VALIDATE_EMAIL) || !$configEmailOk) {
+        if (!$criouTabela) error_log("Não foi possível preparar a tabela de recuperação: " . pg_last_error($conexao));
+        if (!$configEmailOk) error_log("Configure APP_URL, RESEND_API_KEY e MAIL_FROM para habilitar a recuperação de senha.");
+        $erro = "A recuperação de senha está temporariamente indisponível. Tente novamente mais tarde.";
+      } else {
+        $resultadoUsuario = pg_query_params($conexao, "SELECT id_usuarios, email FROM usuarios WHERE email = $1", array($email));
+        if (!$resultadoUsuario) {
+          error_log("Erro ao procurar conta para recuperação: " . pg_last_error($conexao));
+          $erro = "A recuperação de senha está temporariamente indisponível. Tente novamente mais tarde.";
+        } else {
+          if (pg_num_rows($resultadoUsuario) === 1) {
+            $usuario = pg_fetch_assoc($resultadoUsuario);
+            $idUsuarioReset = (int)$usuario["id_usuarios"];
+            pg_query($conexao, "DELETE FROM recuperacao_senha WHERE criado_em < NOW() - INTERVAL '30 days'");
+            $limite = pg_query_params($conexao, "SELECT COUNT(*) AS total FROM recuperacao_senha WHERE id_usuario = $1 AND criado_em > NOW() - INTERVAL '15 minutes'", array($idUsuarioReset));
+            if ($limite && (int)pg_fetch_result($limite, 0, "total") < 3) {
+              $token = bin2hex(random_bytes(32));
+              $tokenHash = hash("sha256", $token);
+              pg_query_params($conexao, "UPDATE recuperacao_senha SET usado = TRUE, expira_em = NOW() WHERE id_usuario = $1 AND usado = FALSE", array($idUsuarioReset));
+              $inserido = pg_query_params($conexao, "INSERT INTO recuperacao_senha (id_usuario, token_hash, expira_em) VALUES ($1, $2, NOW() + INTERVAL '30 minutes')", array($idUsuarioReset, $tokenHash));
+              $link = $baseUrl . "/index.php?redefinir=" . rawurlencode($token) . "#acesso";
+              if (!$inserido || !enviarEmailRecuperacao($usuario["email"], $link)) {
+                if ($inserido) {
+                  pg_query_params($conexao, "UPDATE recuperacao_senha SET expira_em = NOW() WHERE token_hash = $1", array($tokenHash));
+                } else {
+                  error_log("Não foi possível registrar token de recuperação: " . pg_last_error($conexao));
+                }
+              }
+            } elseif (!$limite) {
+              error_log("Erro ao verificar limite de recuperação: " . pg_last_error($conexao));
+              $erro = "A recuperação de senha está temporariamente indisponível. Tente novamente mais tarde.";
+            }
+          }
+
+          if ($erro === "") {
+            header("Location: index.php?recuperacao=solicitada#acesso");
+            exit;
+          }
+        }
+      }
+      $modoRecuperacao = true;
+    } elseif (isset($_POST["redefinir_senha"])) {
+      $token = trim($_POST["token"] ?? "");
+      $novaSenha = $_POST["nova_senha"] ?? "";
+      $confirmacao = $_POST["confirmar_senha"] ?? "";
+      if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+        $erro = "Este link de redefinição é inválido ou expirou.";
+        $tokenRedefinicao = "";
+      } elseif (strlen($novaSenha) < 8) {
+        $erro = "A nova senha deve ter pelo menos 8 caracteres.";
+        $tokenRedefinicao = $token;
+      } elseif ($novaSenha !== $confirmacao) {
+        $erro = "As senhas não coincidem.";
+        $tokenRedefinicao = $token;
+      } else {
+        $criouTabela = pg_query($conexao, "CREATE TABLE IF NOT EXISTS recuperacao_senha (id_recuperacao BIGSERIAL PRIMARY KEY, id_usuario BIGINT NOT NULL, token_hash CHAR(64) NOT NULL UNIQUE, expira_em TIMESTAMPTZ NOT NULL, criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, usado BOOLEAN NOT NULL DEFAULT FALSE)");
+        $tokenHash = hash("sha256", $token);
+        if (!$criouTabela || !pg_query($conexao, "BEGIN")) {
+          $erro = "Não foi possível redefinir a senha agora. Tente novamente.";
+        } else {
+          $consultaToken = pg_query_params($conexao, "SELECT id_usuario FROM recuperacao_senha WHERE token_hash = $1 AND expira_em > NOW() AND usado = FALSE FOR UPDATE", array($tokenHash));
+          if (!$consultaToken || pg_num_rows($consultaToken) !== 1) {
+            pg_query($conexao, "ROLLBACK");
+            $erro = "Este link de redefinição é inválido ou expirou.";
+            $tokenRedefinicao = "";
+          } else {
+            $idUsuarioReset = (int)pg_fetch_result($consultaToken, 0, "id_usuario");
+            $hashSenha = password_hash($novaSenha, PASSWORD_DEFAULT);
+            $atualizou = pg_query_params($conexao, "UPDATE usuarios SET senha = $1 WHERE id_usuarios = $2", array($hashSenha, $idUsuarioReset));
+            $consumiu = $atualizou ? pg_query_params($conexao, "DELETE FROM recuperacao_senha WHERE id_usuario = $1", array($idUsuarioReset)) : false;
+            if ($atualizou && $consumiu && pg_query($conexao, "COMMIT")) {
+              header("Location: index.php?redefinido=1#acesso");
+              exit;
+            }
+            pg_query($conexao, "ROLLBACK");
+            error_log("Erro ao salvar nova senha: " . pg_last_error($conexao));
+            $erro = "Não foi possível redefinir a senha agora. Tente novamente.";
+            $tokenRedefinicao = $token;
+          }
+        }
+      }
     } elseif (isset($_POST["novoUsuario"], $_POST["novaSenha"], $_POST["novoEmail"])) {
         $nome = trim($_POST["novoUsuario"]);
         $senha = $_POST["novaSenha"];
@@ -30,7 +169,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $resultado = pg_query_params(
                 $conexao,
                 "INSERT INTO usuarios (nome, senha, email, telefone, tipo_usuario) VALUES ($1, $2, $3, $4, 'CLIENTE')",
-                array($nome, $senha, $email, $telefone)
+                array($nome, password_hash($senha, PASSWORD_DEFAULT), $email, $telefone)
             );
 
             if ($resultado) {
@@ -52,7 +191,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if ($resultado && pg_num_rows($resultado) === 1) {
             $usuario = pg_fetch_assoc($resultado);
-            if (hash_equals((string)$usuario["senha"], (string)$senha)) {
+            $senhaArmazenada = (string)$usuario["senha"];
+            $infoSenha = password_get_info($senhaArmazenada);
+            $senhaValida = $infoSenha["algo"] !== null
+              ? password_verify($senha, $senhaArmazenada)
+              : hash_equals($senhaArmazenada, $senha);
+            if ($senhaValida) {
+              if ($infoSenha["algo"] === null || password_needs_rehash($senhaArmazenada, PASSWORD_DEFAULT)) {
+                $hashSenha = password_hash($senha, PASSWORD_DEFAULT);
+                pg_query_params($conexao, "UPDATE usuarios SET senha = $1 WHERE email = $2", array($hashSenha, $email));
+              }
                 session_regenerate_id(true);
                 $_SESSION["usuario"] = $usuario["nome"];
                 $_SESSION["email"] = $usuario["email"];
@@ -402,6 +550,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <?php if ($erro !== ""): ?>
           <p class="msg err" role="alert"><?php echo htmlspecialchars($erro, ENT_QUOTES, "UTF-8"); ?></p>
         <?php endif; ?>
+        <?php if ($tokenRedefinicao !== ""): ?>
+          <span class="lab ac lab-line">Redefinir senha</span>
+          <h2 class="tit">Crie uma nova senha</h2>
+          <p class="sub">Escolha uma senha com pelo menos 8 caracteres.</p>
+          <form method="post">
+            <input type="hidden" name="token" value="<?php echo htmlspecialchars($tokenRedefinicao, ENT_QUOTES, "UTF-8"); ?>">
+            <label><span class="lab">Nova senha</span><input type="password" name="nova_senha" required minlength="8" autocomplete="new-password"></label>
+            <label><span class="lab">Confirme a nova senha</span><input type="password" name="confirmar_senha" required minlength="8" autocomplete="new-password"></label>
+            <button class="btn wide lg" type="submit" name="redefinir_senha" value="1">Salvar nova senha</button>
+          </form>
+          <p class="troca"><a class="link" href="index.php#acesso">Voltar para entrar</a></p>
+        <?php elseif ($modoRecuperacao): ?>
+          <span class="lab ac lab-line">Recuperar acesso</span>
+          <h2 class="tit">Esqueceu sua senha?</h2>
+          <p class="sub">Informe o e-mail da sua conta. Se estiver cadastrado, enviaremos um link para criar uma nova senha.</p>
+          <form method="post">
+            <label><span class="lab">E-mail</span><input type="email" name="email" required autocomplete="email" placeholder="voce@email.com"></label>
+            <button class="btn wide lg" type="submit" name="solicitar_redefinicao" value="1">Enviar link de recuperação</button>
+          </form>
+          <p class="troca"><a class="link" href="index.php#acesso">Voltar para entrar</a></p>
+        <?php else: ?>
         <div class="auth-tabs" role="tablist" aria-label="Acesso à conta">
           <button type="button" class="btn sm" data-auth-tab="entrar" aria-selected="true">Entrar</button>
           <button type="button" class="btn sm out" data-auth-tab="criar" aria-selected="false">Criar conta</button>
@@ -434,6 +603,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               </svg>
             </button>
           </form>
+          <p class="troca"><a class="link" href="index.php?recuperar=1#acesso">Esqueci minha senha</a></p>
           <p class="troca">Ainda não tem conta? <button type="button" class="link" data-go="criar">Criar conta</button></p>
         </div>
         <div data-auth-panel="criar" hidden>
@@ -469,6 +639,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </form>
           <p class="troca">Já tem cadastro? <button type="button" class="link" data-go="entrar">Entrar</button></p>
         </div>
+        <?php endif; ?>
       </div>
     </div>
   </div>

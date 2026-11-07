@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Iniciar site PHP local",
+			"type": "shell",
+			"command": "php",
+			"args": [
+				"-S",
+				"127.0.0.1:8000",
+				"-t",
+				"."
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
