@@ -210,7 +210,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <div class="foto"><img src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792143769/daniel.jpg" alt="Retrato do Arqt. Daniel" loading="lazy">
         <span class="tag">Projeto executivo</span></div>
         <div class="info">
-          <h3>Arqt. Daniel</h3>
+          <h3>Daniel</h3>
           <span class="lab">Designer de Interiores</span>
           <p>Design comercial e corporativo com foco em resultados e design estratégico.</p>
         </div>
@@ -221,7 +221,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <div class="info">
           <h3>Arqt. João Vitor</h3>
           <span class="lab">Interiores</span>
-          <p>Responsável pela etapa de 3D, também cuida do layout e da marcenaria sob medida para antecipar o resultado final.</p>
+          <p>Arquiteto especializado em desenvolvimento de projetos arquitetônicos e vizualização 3D, unindo criatividade técnica para transformar ideias em espaços reais.</p>
         </div>
       </article>
     </div>
