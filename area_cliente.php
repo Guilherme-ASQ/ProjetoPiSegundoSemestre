@@ -329,7 +329,7 @@ if ($rAnexos) {
 <header class="top" id="top">
   <div class="wrap bar">
     <a class="brand" href="index.php">
-      <img src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792142855/Logo_Um_P%C3%89_delDEIA.jpg" alt="">
+      <img src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792142855/Logo_Um_P%C3%89_deIDEIA.jpg" alt="Logo Um Pé de IDEIA">
       <span><b>Um Pé de IDEIA</b><span class="lab">Área do cliente</span></span>
     </a>
     <nav class="nav" aria-label="Principal">
