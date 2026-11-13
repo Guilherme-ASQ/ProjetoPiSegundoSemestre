@@ -205,8 +205,21 @@ if (!$rSolicitados || !$rAnalise || !$rConcluidos) {
     die("Erro ao carregar os serviços.");
 }
 
+$etapasAdmin = array(
+    array("titulo" => "Novas solicitações", "status" => "Solicitado", "id" => "admin-status-solicitado", "classe" => "stage-new", "quantidade" => pg_num_rows($rSolicitados)),
+    array("titulo" => "Em análise", "status" => "Em análise", "id" => "admin-status-em_analise", "classe" => "stage-review", "quantidade" => pg_num_rows($rAnalise)),
+    array("titulo" => "Concluídas", "status" => "Concluído", "id" => "admin-status-concluido", "classe" => "stage-done", "quantidade" => pg_num_rows($rConcluidos))
+);
+$totalEtapasAdmin = array_sum(array_column($etapasAdmin, "quantidade"));
+foreach ($etapasAdmin as &$etapaAdmin) {
+    $etapaAdmin["percentual"] = $totalEtapasAdmin > 0
+        ? round(($etapaAdmin["quantidade"] / $totalEtapasAdmin) * 100, 1)
+        : 0;
+}
+unset($etapaAdmin);
+
 function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $bucket) {
-    echo '<section class="admin-col">';
+    echo '<section class="admin-col" id="admin-status-' . strtolower($tipo) . '">';
     echo '<h2>' . htmlspecialchars($titulo, ENT_QUOTES, "UTF-8") . '</h2>';
     echo '<div class="admin-list">';
     if (pg_num_rows($resultado) === 0) {
@@ -376,6 +389,45 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
 <div class="kpi"><span class="lab">Em análise</span><b><?php echo pg_num_rows($rAnalise); ?></b></div>
 <div class="kpi"><span class="lab">Concluídas</span><b><?php echo pg_num_rows($rConcluidos); ?></b></div>
 </div>
+
+<section class="admin-overview" aria-labelledby="admin-overview-title">
+<div class="admin-overview-head">
+<div>
+<span class="lab ac">Resumo operacional</span>
+<h2 id="admin-overview-title">Fluxo de solicitações</h2>
+<p>Distribuição dos serviços por etapa no painel.</p>
+</div>
+<div class="admin-overview-total">
+<b><?php echo $totalEtapasAdmin; ?></b>
+<span>no fluxo</span>
+</div>
+</div>
+<div class="admin-pipeline" role="img" aria-label="<?php
+    echo htmlspecialchars(
+        implode(", ", array_map(function ($etapa) {
+            return $etapa["quantidade"] . " " . $etapa["status"];
+        }, $etapasAdmin)),
+        ENT_QUOTES,
+        "UTF-8"
+    );
+?>">
+<?php foreach ($etapasAdmin as $etapa): ?>
+<span class="admin-pipeline-segment <?php echo $etapa["classe"]; ?>" style="flex-basis: <?php echo $etapa["percentual"]; ?>%"></span>
+<?php endforeach; ?>
+</div>
+<div class="admin-stage-grid">
+<?php foreach ($etapasAdmin as $etapa): ?>
+<a class="admin-stage <?php echo $etapa["classe"]; ?>" href="#<?php echo $etapa["id"]; ?>">
+<span class="admin-stage-heading">
+<span class="admin-stage-name"><i aria-hidden="true"></i><?php echo htmlspecialchars($etapa["titulo"], ENT_QUOTES, "UTF-8"); ?></span>
+<strong><?php echo $etapa["quantidade"]; ?></strong>
+</span>
+<span class="admin-stage-track" aria-hidden="true"><i style="width: <?php echo $etapa["percentual"]; ?>%"></i></span>
+<span class="admin-stage-foot"><?php echo number_format($etapa["percentual"], 1, ",", "."); ?>% do total <span>Ver etapa <span aria-hidden="true">→</span></span></span>
+</a>
+<?php endforeach; ?>
+</div>
+</section>
 
 <?php if (!$supabaseUrl || !$supabaseKey): ?>
 <p class="msg err">Atenção: configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no Render para exibir anexos.</p>
