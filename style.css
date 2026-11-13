@@ -676,6 +676,15 @@ select { appearance: none; background-image: url("data:image/svg+xml;utf8,<svg x
 .att { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line-2); }
 .att .files { margin-top: 12px; }
 .att .file { cursor: zoom-in; }
+.admin-attachment-image {
+  display: inline-flex; width: min(100%, 180px); flex-direction: column; overflow: hidden;
+  margin: 12px 8px 0 0; vertical-align: top;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--paper);
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+.admin-attachment-image:hover { transform: translateY(-2px); border-color: var(--accent-2); box-shadow: var(--sh-1); }
+.admin-attachment-image img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--bg-2); }
+.admin-attachment-image span { overflow: hidden; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--mut); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .acts2 { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .empty { padding: 44px 28px; border: 1.5px dashed var(--line-2); border-radius: var(--r-lg); text-align: center; background: rgba(255,253,250,.6); }
 .empty .ico { width: 58px; height: 58px; margin: 0 auto 14px; border-radius: 50%; background: var(--bg-2); display: grid; place-items: center; }

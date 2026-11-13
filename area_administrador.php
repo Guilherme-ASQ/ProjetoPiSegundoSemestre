@@ -189,9 +189,11 @@ function buscarAnexosAdmin($conexao, $idServico, $base, $key, $bucket) {
         return $lista;
     }
     while ($a = pg_fetch_assoc($r)) {
+        $extensao = strtolower(pathinfo($a["caminho_arquivo"], PATHINFO_EXTENSION));
         $lista[] = array(
             "nome" => $a["nome_arquivo"],
-            "url" => adminUrlAssinada($base, $key, $bucket, $a["caminho_arquivo"])
+            "url" => adminUrlAssinada($base, $key, $bucket, $a["caminho_arquivo"]),
+            "imagem" => in_array($extensao, array("jpg", "jpeg", "png", "webp"), true)
         );
     }
     return $lista;
@@ -286,7 +288,14 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
         }
         foreach ($anexos as $a) {
             if ($a["url"]) {
-                echo '<a target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '">' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '</a><br>';
+                if ($a["imagem"]) {
+                    echo '<a class="admin-attachment-image" target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '">';
+                    echo '<img src="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '" alt="' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '" loading="lazy">';
+                    echo '<span>' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '</span>';
+                    echo '</a>';
+                } else {
+                    echo '<a target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '">' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '</a><br>';
+                }
             } else {
                 echo '<span>' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . ' (link indisponível)</span><br>';
             }
