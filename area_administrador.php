@@ -452,14 +452,31 @@ mostraTabelaAdmin($rConcluidos, "Concluído", "CONCLUIDO", $conexao, $supabaseUr
 </div>
 </main>
 <footer>
-<div class="wrap footer-grid">
+<div class="wrap">
+<div class="cols">
 <div>
-<a class="brand" href="index.php"><b>Um Pé de IDEIA</b></a>
-<p>Painel interno do escritório.</p>
+<a class="brand" href="index.php"><img src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792142855/Logo_Um_P%C3%89_deIDEIA.jpg" alt=""><span><b>Um Pé de IDEIA</b><span class="lab">Arquitetura &amp; Design</span></span></a>
+<p>Croquis à mão, projeto técnico e obra acompanhada de perto. Escritório em Santana, zona norte de São Paulo.</p>
+<div class="socials">
+<a href="https://www.instagram.com/arquiteto.aspi/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg></a>
+<a href="https://www.facebook.com/umpedeideia/" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24"><path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V3.9c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3V10H7.3v3h2.8v8z"/></svg></a>
+<a href="https://wa.me/5511982916734?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20conversar%20sobre%20um%20projeto." target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20.5l1.8-5A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.6 9.2c.2 2.5 2.4 4.7 4.9 4.9"/></svg></a>
+</div>
+</div>
+<div>
+<h4>Navegar</h4>
+<a href="index.php#escritorio">Escritório</a><a href="index.php#equipe">Equipe</a><a href="index.php#projetos">Galeria</a><a href="index.php#servicos">Serviços</a><a href="index.php#feedbacks">Feedbacks</a><a href="index.php#contato">Contato</a>
 </div>
 <div>
 <h4>Contato</h4>
-<a href="mailto:contato@umpedeideia.com.br">contato@umpedeideia.com.br</a>
+<a href="mailto:aspi@umpedeideia.com">aspi@umpedeideia.com</a>
+<a href="tel:+5511982916734">(11) 98291-6734</a>
+<a href="index.php#acesso">Login</a>
+</div>
+</div>
+<div class="end">
+<span>© <span id="ano">2026</span> Um Pé de IDEIA · Todos os direitos reservados</span>
+<span>Três especialistas, um escritório · São Paulo SP</span>
 </div>
 </div>
 </footer>
