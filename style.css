@@ -330,6 +330,7 @@ strong { font-weight: 600; color: var(--ink); }
 .feedback-card.is-prev { transform: translateX(calc(-50% - 88%)) scale(.82) rotateY(7deg); }
 .feedback-card.is-next { transform: translateX(calc(-50% + 88%)) scale(.82) rotateY(-7deg); }
 .feedback-photo { width: 76px; height: 76px; margin-bottom: 18px; border: 1px dashed var(--line-2); border-radius: 50%; background: var(--bg-2); display: grid; place-content: center; justify-items: center; gap: 3px; color: var(--mut); }
+.feedback-photo img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .feedback-photo svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .feedback-photo span { font: 400 8px/1.2 var(--f-mono); text-align: center; }
 .feedback-stars { margin-bottom: 14px; color: var(--accent); font-size: 1.2rem; letter-spacing: .14em; line-height: 1; }
