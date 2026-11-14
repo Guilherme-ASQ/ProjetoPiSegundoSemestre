@@ -220,12 +220,26 @@ foreach ($etapasAdmin as &$etapaAdmin) {
 }
 unset($etapaAdmin);
 
+function adminTexto($valor) {
+    return htmlspecialchars((string) $valor, ENT_QUOTES, "UTF-8");
+}
+
+function adminRotuloStatus($status) {
+    $rotulos = array("SOLICITADO" => "Solicitado", "EM_ANALISE" => "Em análise", "CONCLUIDO" => "Concluído", "CANCELADO" => "Cancelado");
+    return $rotulos[$status] ?? str_replace("_", " ", $status);
+}
+
 function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $bucket) {
+    $quantidade = pg_num_rows($resultado);
     echo '<section class="admin-col" id="admin-status-' . strtolower($tipo) . '">';
-    echo '<h2>' . htmlspecialchars($titulo, ENT_QUOTES, "UTF-8") . '</h2>';
+    echo '<h2 class="admin-col-title">' . adminTexto($titulo) . ' <span>' . $quantidade . '</span></h2>';
     echo '<div class="admin-list">';
-    if (pg_num_rows($resultado) === 0) {
-        echo '<div class="empty"><p>Nenhum serviço nesta etapa.</p></div>';
+    if ($quantidade === 0) {
+        echo '<div class="empty admin-empty">';
+        echo '<span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="m4 7 8 6 8-6"/></svg></span>';
+        echo '<b>Nenhum serviço nesta etapa</b>';
+        echo '<p>Quando houver solicitações com este status, elas aparecem aqui.</p>';
+        echo '</div>';
     }
     while ($s = pg_fetch_assoc($resultado)) {
         $idServico = (int) $s["id_servico"];
@@ -234,40 +248,78 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
             $telefone = "55" . $telefone;
         }
         $temWhatsApp = (strlen($telefone) >= 12 && strlen($telefone) <= 13 && substr($telefone, 0, 2) === "55");
+        $respondida = trim($s["resposta"] ?? "") !== "";
+        $inicial = mb_strtoupper(mb_substr($s["nome"] ?? "?", 0, 1, "UTF-8"), "UTF-8");
+        $anexos = buscarAnexosAdmin($conexao, $idServico, $base, $key, $bucket);
 
-        echo '<article class="req">';
-        echo '<div class="r1">';
-        echo '<span class="lab">Solicitação #' . $idServico . '</span>';
-        echo '<span class="st">' . htmlspecialchars(str_replace("_", " ", $s["status"]), ENT_QUOTES, "UTF-8") . '</span>';
+        echo '<article class="req admin-req">';
+
+        echo '<div class="admin-req-head">';
+        echo '<div class="admin-req-who">';
+        echo '<span class="avatar admin-req-avatar" aria-hidden="true">' . adminTexto($inicial) . '</span>';
+        echo '<div><span class="lab">Solicitação #' . $idServico . '</span><h3>' . adminTexto($s["nome"]) . '</h3></div>';
+        echo '</div>';
+        echo '<div class="admin-req-tags">';
+        echo $respondida
+            ? '<span class="admin-tag is-ok">Respondida</span>'
+            : '<span class="admin-tag">Aguardando resposta</span>';
+        echo '<span class="st ' . adminTexto(strtolower($s["status"])) . '">' . adminTexto(adminRotuloStatus($s["status"])) . '</span>';
+        echo '</div>';
         echo '</div>';
 
-        echo '<h3>' . htmlspecialchars($s["nome"], ENT_QUOTES, "UTF-8") . '</h3>';
-        echo '<p class="meta">' . htmlspecialchars($s["email"], ENT_QUOTES, "UTF-8");
-        if (!empty($s["telefone"])) {
-            echo ' &nbsp; ' . htmlspecialchars($s["telefone"], ENT_QUOTES, "UTF-8");
+        echo '<div class="admin-req-body">';
+
+        echo '<div class="admin-req-info">';
+        echo '<dl class="admin-req-meta">';
+        echo '<div><dt>E-mail</dt><dd><a href="mailto:' . adminTexto($s["email"]) . '">' . adminTexto($s["email"]) . '</a></dd></div>';
+        echo '<div><dt>Telefone</dt><dd>' . (!empty($s["telefone"]) ? adminTexto($s["telefone"]) : '<span class="admin-muted">Não informado</span>') . '</dd></div>';
+        echo '<div><dt>Tipo de projeto</dt><dd>' . adminTexto($s["tipo_projeto"] ?? "Não informado") . '</dd></div>';
+        echo '<div><dt>Endereço</dt><dd>' . adminTexto($s["endereco"] ?? "Não informado") . '</dd></div>';
+        echo '</dl>';
+
+        echo '<div class="admin-req-block">';
+        echo '<span class="lab">Pedido do cliente</span>';
+        echo '<p class="desc">' . adminTexto($s["solicitacao"]) . '</p>';
+        echo '</div>';
+
+        echo '<div class="admin-req-block">';
+        echo '<span class="lab">Anexos do cliente' . ($anexos ? ' · ' . count($anexos) : '') . '</span>';
+        echo '<div class="attachment-links admin-attachments">';
+        if (!$anexos) {
+            echo '<span class="admin-muted">Nenhum arquivo anexado.</span>';
         }
-        echo '</p>';
+        foreach ($anexos as $a) {
+            if ($a["url"] && $a["imagem"]) {
+                echo '<a class="admin-attachment-image" target="_blank" rel="noopener noreferrer" href="' . adminTexto($a["url"]) . '">';
+                echo '<img src="' . adminTexto($a["url"]) . '" alt="' . adminTexto($a["nome"]) . '" loading="lazy">';
+                echo '<span>' . adminTexto($a["nome"]) . '</span>';
+                echo '</a>';
+            } elseif ($a["url"]) {
+                echo '<a class="admin-attachment-file" target="_blank" rel="noopener noreferrer" href="' . adminTexto($a["url"]) . '">';
+                echo '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>';
+                echo '<span>' . adminTexto($a["nome"]) . '</span>';
+                echo '</a>';
+            } else {
+                echo '<span class="admin-attachment-file is-off">' . adminTexto($a["nome"]) . ' (link indisponível)</span>';
+            }
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
 
-        echo '<p class="meta">';
-        echo '<b>Tipo de projeto:</b> ' . htmlspecialchars($s["tipo_projeto"] ?? "Não informado", ENT_QUOTES, "UTF-8") . '<br>';
-        echo '<b>Endereço:</b> ' . htmlspecialchars($s["endereco"] ?? "Não informado", ENT_QUOTES, "UTF-8");
-        echo '</p>';
-
-        echo '<p class="desc">' . nl2br(htmlspecialchars($s["solicitacao"], ENT_QUOTES, "UTF-8")) . '</p>';
-
-        echo '<div class="att response-area">';
-        echo '<span class="lab">RESPOSTA AO CLIENTE</span>';
+        echo '<div class="admin-req-reply response-area">';
+        echo '<span class="lab ac">Resposta ao cliente</span>';
         echo '<form method="post" class="response-form">';
         echo '<input type="hidden" name="id_servico" value="' . $idServico . '">';
-        echo '<textarea name="resposta" rows="5" maxlength="5000" placeholder="Escreva o retorno técnico, o prazo do estudo preliminar e os próximos passos..." required>' . htmlspecialchars($s["resposta"] ?? "", ENT_QUOTES, "UTF-8") . '</textarea>';
-        echo '<div class="acts2">';
-        echo '<button class="btn sm response-send" type="submit" name="enviar_resposta" value="1">ENVIAR RESPOSTA</button>';
+        echo '<textarea name="resposta" rows="6" maxlength="5000" aria-label="Resposta ao cliente da solicitação #' . $idServico . '" placeholder="Escreva o retorno técnico, o prazo do estudo preliminar e os próximos passos..." required>' . adminTexto($s["resposta"] ?? "") . '</textarea>';
+        echo '<div class="admin-reply-actions">';
+        echo '<button class="btn sm response-send" type="submit" name="enviar_resposta" value="1">' . ($respondida ? 'ATUALIZAR RESPOSTA' : 'ENVIAR RESPOSTA') . '</button>';
 
         if ($temWhatsApp) {
             $linkWhatsApp = "https://wa.me/" . $telefone;
-            echo '<a class="btn sm whatsapp" href="' . htmlspecialchars($linkWhatsApp, ENT_QUOTES, "UTF-8") . '" target="_blank" rel="noopener noreferrer">';
+            echo '<a class="btn sm whatsapp" href="' . adminTexto($linkWhatsApp) . '" target="_blank" rel="noopener noreferrer">';
             echo '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M9 9a5 5 0 0 0 6 6"/></svg>';
-            echo 'WHATSAPP DO CLIENTE';
+            echo 'WHATSAPP';
             echo '</a>';
         } else {
             echo '<button class="btn sm whatsapp whatsapp-disabled" type="button" disabled>';
@@ -279,37 +331,20 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
         echo '</form>';
         echo '</div>';
 
-        echo '<div class="att">';
-        echo '<span class="lab">ANEXOS DO CLIENTE</span>';
-        echo '<div class="attachment-links">';
-        $anexos = buscarAnexosAdmin($conexao, $idServico, $base, $key, $bucket);
-        if (!$anexos) {
-            echo 'Nenhum arquivo anexado.';
-        }
-        foreach ($anexos as $a) {
-            if ($a["url"]) {
-                if ($a["imagem"]) {
-                    echo '<a class="admin-attachment-image" target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '">';
-                    echo '<img src="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '" alt="' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '" loading="lazy">';
-                    echo '<span>' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '</span>';
-                    echo '</a>';
-                } else {
-                    echo '<a target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8") . '">' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . '</a><br>';
-                }
-            } else {
-                echo '<span>' . htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8") . ' (link indisponível)</span><br>';
-            }
-        }
-        echo '</div>';
         echo '</div>';
 
-        if ($tipo === "SOLICITADO") {
-            echo '<form method="post"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="EM_ANALISE"><button class="btn sm" name="alterar_status" value="1" type="submit">MARCAR EM ANÁLISE</button></form>';
-        }
-        if ($tipo === "EM_ANALISE") {
-            echo '<div class="acts2">';
-            echo '<form method="post"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="CONCLUIDO"><button class="btn sm" name="alterar_status" value="1" type="submit">CONCLUIR SERVIÇO</button></form>';
-            echo '<form method="post" onsubmit="return confirm(\'Cancelar este serviço?\')"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="CANCELADO"><button class="btn out sm" name="alterar_status" value="1" type="submit">CANCELAR SERVIÇO</button></form>';
+        if ($tipo === "SOLICITADO" || $tipo === "EM_ANALISE") {
+            echo '<div class="admin-req-foot">';
+            echo '<span class="admin-req-next">Próxima etapa</span>';
+            echo '<div class="admin-req-actions">';
+            if ($tipo === "SOLICITADO") {
+                echo '<form method="post"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="EM_ANALISE"><button class="btn sm dk" name="alterar_status" value="1" type="submit">MARCAR EM ANÁLISE →</button></form>';
+            }
+            if ($tipo === "EM_ANALISE") {
+                echo '<form method="post" onsubmit="return confirm(\'Cancelar este serviço?\')"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="CANCELADO"><button class="btn out sm admin-btn-cancel" name="alterar_status" value="1" type="submit">CANCELAR SERVIÇO</button></form>';
+                echo '<form method="post"><input type="hidden" name="id_servico" value="' . $idServico . '"><input type="hidden" name="novo_status" value="CONCLUIDO"><button class="btn sm dk" name="alterar_status" value="1" type="submit">CONCLUIR SERVIÇO ✓</button></form>';
+            }
+            echo '</div>';
             echo '</div>';
         }
 
@@ -345,98 +380,85 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
 </header>
 <main class="page">
 <div class="wrap">
-<div class="panel-top">
+<div class="panel-top admin-top">
 <div class="user">
-<span class="avatar"><?php echo htmlspecialchars(mb_strtoupper(mb_substr($nome, 0, 1, "UTF-8"), "UTF-8"), ENT_QUOTES, "UTF-8"); ?></span>
+<span class="avatar"><?php echo adminTexto(mb_strtoupper(mb_substr($nome, 0, 1, "UTF-8"), "UTF-8")); ?></span>
 <div>
-<b><?php echo htmlspecialchars($nome, ENT_QUOTES, "UTF-8"); ?></b>
-<span class="lab"><?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?></span>
+<span class="lab">Painel do arquiteto</span>
+<b>Olá, <?php echo adminTexto($nome); ?></b>
+<span class="admin-top-email"><?php echo adminTexto($email); ?></span>
 </div>
 </div>
-<a class="btn out sm" href="area_administrador.php?editar=1">Editar dados</a>
+<?php if (isset($_GET["editar"])): ?>
+<a class="btn out sm" href="area_administrador.php">Fechar edição</a>
+<?php else: ?>
+<a class="btn out sm" href="area_administrador.php?editar=1">Editar meus dados</a>
+<?php endif; ?>
 </div>
 
 <?php if ($erro): ?>
-<p class="msg err"><?php echo htmlspecialchars($erro, ENT_QUOTES, "UTF-8"); ?></p>
+<p class="msg err"><?php echo adminTexto($erro); ?></p>
 <?php endif; ?>
 
 <?php if (isset($_GET["editar"])): ?>
-<section class="sheet pad-lg edit-box">
+<section class="sheet pad-lg edit-box admin-edit">
+<div class="admin-edit-head">
 <h2>Editar informações</h2>
+<p class="hint">Deixe a senha em branco para manter a atual.</p>
+</div>
 <form method="post">
+<div class="row-2">
 <label>
 <span class="lab">Nome</span>
-<input type="text" name="nome" required value="<?php echo htmlspecialchars($nome, ENT_QUOTES, "UTF-8"); ?>">
+<input type="text" name="nome" required value="<?php echo adminTexto($nome); ?>">
 </label>
 <label>
 <span class="lab">E-mail</span>
-<input type="email" name="email" required value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>">
+<input type="email" name="email" required value="<?php echo adminTexto($email); ?>">
 </label>
+</div>
+<div class="row-2">
 <label>
 <span class="lab">Telefone</span>
-<input type="text" name="telefone" value="<?php echo htmlspecialchars($telefone ?? "", ENT_QUOTES, "UTF-8"); ?>">
+<input type="text" name="telefone" value="<?php echo adminTexto($telefone ?? ""); ?>">
 </label>
 <label>
 <span class="lab">Nova senha (opcional)</span>
-<input type="password" name="senha">
+<input type="password" name="senha" autocomplete="new-password">
 </label>
+</div>
+<div class="admin-edit-actions">
 <button class="btn" name="salvar" value="1" type="submit">Salvar</button>
 <a class="btn out" href="area_administrador.php">Cancelar</a>
+</div>
 </form>
 </section>
 <?php endif; ?>
 
-<div class="head-2">
+<div class="admin-intro">
+<div>
 <span class="lab ac lab-line">Caixa de entrada</span>
 <h1>Solicitações recebidas</h1>
-<p>Consulte os pedidos e os arquivos enviados pelos clientes.</p>
+<p>Escolha uma etapa para ver os pedidos, responder o cliente e avançar o serviço.</p>
 </div>
-
-<div class="kpis">
-<div class="kpi ac"><span class="lab">Total recebido</span><b><?php echo pg_num_rows($rSolicitados) + pg_num_rows($rAnalise) + pg_num_rows($rConcluidos); ?></b></div>
-<div class="kpi"><span class="lab">Novas</span><b><?php echo pg_num_rows($rSolicitados); ?></b></div>
-<div class="kpi"><span class="lab">Em análise</span><b><?php echo pg_num_rows($rAnalise); ?></b></div>
-<div class="kpi"><span class="lab">Concluídas</span><b><?php echo pg_num_rows($rConcluidos); ?></b></div>
-</div>
-
-<section class="admin-overview" aria-labelledby="admin-overview-title">
-<div class="admin-overview-head">
-<div>
-<span class="lab ac">Resumo operacional</span>
-<h2 id="admin-overview-title">Fluxo de solicitações</h2>
-<p>Distribuição dos serviços por etapa no painel.</p>
-</div>
-<div class="admin-overview-total">
+<div class="admin-intro-total">
 <b><?php echo $totalEtapasAdmin; ?></b>
-<span>no fluxo</span>
+<span>solicitações<br>no total</span>
 </div>
 </div>
-<div class="admin-pipeline" role="img" aria-label="<?php
-    echo htmlspecialchars(
-        implode(", ", array_map(function ($etapa) {
-            return $etapa["quantidade"] . " " . $etapa["status"];
-        }, $etapasAdmin)),
-        ENT_QUOTES,
-        "UTF-8"
-    );
-?>">
+
+<nav class="admin-stage-grid" aria-label="Etapas das solicitações">
 <?php foreach ($etapasAdmin as $etapa): ?>
-<span class="admin-pipeline-segment <?php echo $etapa["classe"]; ?>" style="flex-basis: <?php echo $etapa["percentual"]; ?>%"></span>
-<?php endforeach; ?>
-</div>
-<div class="admin-stage-grid">
-<?php foreach ($etapasAdmin as $etapa): ?>
-<a class="admin-stage <?php echo $etapa["classe"]; ?>" href="#<?php echo $etapa["id"]; ?>">
+<a class="admin-stage <?php echo $etapa["classe"]; ?>" href="#<?php echo $etapa["id"]; ?>" data-stage="<?php echo $etapa["id"]; ?>">
 <span class="admin-stage-heading">
-<span class="admin-stage-name"><i aria-hidden="true"></i><?php echo htmlspecialchars($etapa["titulo"], ENT_QUOTES, "UTF-8"); ?></span>
+<span class="admin-stage-name"><i aria-hidden="true"></i><?php echo adminTexto($etapa["titulo"]); ?></span>
 <strong><?php echo $etapa["quantidade"]; ?></strong>
 </span>
 <span class="admin-stage-track" aria-hidden="true"><i style="width: <?php echo $etapa["percentual"]; ?>%"></i></span>
-<span class="admin-stage-foot"><?php echo number_format($etapa["percentual"], 1, ",", "."); ?>% do total <span>Ver etapa <span aria-hidden="true">→</span></span></span>
+<span class="admin-stage-foot"><?php echo number_format($etapa["percentual"], 1, ",", "."); ?>% do total</span>
 </a>
 <?php endforeach; ?>
-</div>
-</section>
+</nav>
 
 <?php if (!$supabaseUrl || !$supabaseKey): ?>
 <p class="msg err">Atenção: configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no Render para exibir anexos.</p>
@@ -444,9 +466,9 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
 
 <div class="admin-board">
 <?php
-mostraTabelaAdmin($rSolicitados, "Solicitado", "SOLICITADO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
+mostraTabelaAdmin($rSolicitados, "Novas solicitações", "SOLICITADO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
 mostraTabelaAdmin($rAnalise, "Em análise", "EM_ANALISE", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
-mostraTabelaAdmin($rConcluidos, "Concluído", "CONCLUIDO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
+mostraTabelaAdmin($rConcluidos, "Concluídas", "CONCLUIDO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
 ?>
 </div>
 </div>
@@ -480,6 +502,45 @@ mostraTabelaAdmin($rConcluidos, "Concluído", "CONCLUIDO", $conexao, $supabaseUr
 </div>
 </div>
 </footer>
+<script>
+(function () {
+  var board = document.querySelector('.admin-board');
+  var nav = document.querySelector('.admin-stage-grid');
+  if (!board || !nav) return;
+  var tabs = Array.prototype.slice.call(nav.querySelectorAll('[data-stage]'));
+  var cols = Array.prototype.slice.call(board.querySelectorAll('.admin-col'));
+  var ids = tabs.map(function (t) { return t.getAttribute('data-stage'); });
+
+  board.classList.add('is-tabs');
+  nav.setAttribute('role', 'tablist');
+
+  function mostrar(id) {
+    tabs.forEach(function (t) {
+      var ativo = t.getAttribute('data-stage') === id;
+      t.classList.toggle('is-active', ativo);
+      t.setAttribute('aria-selected', ativo ? 'true' : 'false');
+    });
+    cols.forEach(function (c) { c.hidden = c.id !== id; });
+    try { sessionStorage.setItem('adminEtapa', id); } catch (e) {}
+  }
+
+  tabs.forEach(function (t) {
+    t.setAttribute('role', 'tab');
+    t.setAttribute('aria-controls', t.getAttribute('data-stage'));
+    t.addEventListener('click', function (e) {
+      e.preventDefault();
+      mostrar(t.getAttribute('data-stage'));
+    });
+  });
+  cols.forEach(function (c) { c.setAttribute('role', 'tabpanel'); });
+
+  var inicial = location.hash.slice(1);
+  if (ids.indexOf(inicial) === -1) {
+    try { inicial = sessionStorage.getItem('adminEtapa'); } catch (e) { inicial = null; }
+  }
+  mostrar(ids.indexOf(inicial) !== -1 ? inicial : ids[0]);
+})();
+</script>
 <script src="script.js"></script>
 </body>
 </html>
