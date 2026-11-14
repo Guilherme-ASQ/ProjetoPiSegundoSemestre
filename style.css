@@ -851,3 +851,8 @@ a.admin-attachment-file:hover { border-color: var(--accent-2); }
 .cliente-req .desc { color: var(--ink-2); }
 .cliente-aguardando { margin-top: 14px; padding: 10px 14px; border: 1px dashed var(--line-2); border-radius: var(--r-sm); }
 .cliente-req-foot { display: flex; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* Remover concluídas do painel */
+.admin-col-tools { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; border: 1px dashed var(--line-2); border-radius: var(--r); background: var(--paper); }
+.admin-col-tools p { margin: 0; color: var(--mut); font-size: 13.4px; }
+.admin-col-tools form { display: block; }

@@ -302,6 +302,35 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["solicitar_servico"]))
     }
 }
 
+function garantirColunasOcultar($conexao) {
+    $r = pg_query($conexao, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'servicos' AND column_name IN ('oculto_admin', 'oculto_cliente')");
+    if ($r && (int)pg_fetch_result($r, 0, 0) === 2) return true;
+    $ok = pg_query($conexao, "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS oculto_admin BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN IF NOT EXISTS oculto_cliente BOOLEAN NOT NULL DEFAULT FALSE");
+    if (!$ok) error_log("Não foi possível criar as colunas de ocultar: " . pg_last_error($conexao));
+    return (bool)$ok;
+}
+$ocultarDisponivel = garantirColunasOcultar($conexao);
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && $ocultarDisponivel && (isset($_POST["remover_servico"]) || isset($_POST["limpar_finalizadas"]))) {
+    if (isset($_POST["limpar_finalizadas"])) {
+        $r = pg_query_params(
+            $conexao,
+            "UPDATE servicos SET oculto_cliente = TRUE WHERE id_usuario = $1 AND status IN ('CONCLUIDO', 'CANCELADO') AND oculto_cliente = FALSE",
+            array($idUsuario)
+        );
+    } else {
+        $idRemover = filter_var($_POST["id_servico"] ?? "", FILTER_VALIDATE_INT);
+        $r = $idRemover ? pg_query_params(
+            $conexao,
+            "UPDATE servicos SET oculto_cliente = TRUE WHERE id_servicos = $1 AND id_usuario = $2 AND status IN ('CONCLUIDO', 'CANCELADO')",
+            array($idRemover, $idUsuario)
+        ) : false;
+    }
+    if (!$r) error_log("Erro ao remover solicitações do cliente: " . pg_last_error($conexao));
+    header("Location: area_cliente.php" . ($r ? "?removido=" . pg_affected_rows($r) : ""));
+    exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["cancelar_servico"])) {
     $idCancelar = filter_var($_POST["id_servico"] ?? "", FILTER_VALIDATE_INT);
     if ($idCancelar) {
@@ -320,18 +349,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["cancelar_servico"])) 
 
 $rServicos = pg_query_params(
     $conexao,
-    "SELECT id_servicos, tipo_projeto, endereco, descricao, status, resposta FROM servicos WHERE id_usuario = $1 ORDER BY id_servicos DESC",
+    "SELECT id_servicos, tipo_projeto, endereco, descricao, status, resposta FROM servicos WHERE id_usuario = $1" . ($ocultarDisponivel ? " AND oculto_cliente = FALSE" : "") . " ORDER BY id_servicos DESC",
     array($idUsuario)
 );
 
 if (!$rServicos) {
     die("Erro ao buscar seus serviços.");
 }
+$servicos = pg_fetch_all($rServicos) ?: array();
+$qtdFinalizadas = count(array_filter($servicos, function ($sv) {
+    return $sv["status"] === "CONCLUIDO" || $sv["status"] === "CANCELADO";
+}));
 
 $anexosPorServico = array();
 $rAnexos = pg_query_params(
     $conexao,
-    "SELECT a.id_servico, a.nome_arquivo, a.caminho_arquivo FROM anexos_servicos a INNER JOIN servicos s ON s.id_servicos = a.id_servico WHERE s.id_usuario = $1 ORDER BY a.id_anexo",
+    "SELECT a.id_servico, a.nome_arquivo, a.caminho_arquivo FROM anexos_servicos a INNER JOIN servicos s ON s.id_servicos = a.id_servico WHERE s.id_usuario = $1" . ($ocultarDisponivel ? " AND s.oculto_cliente = FALSE" : "") . " ORDER BY a.id_anexo",
     array($idUsuario)
 );
 
@@ -457,9 +490,18 @@ if ($rAnexos) {
       <div>
         <div class="head-row cliente-lista-head">
           <div><span class="lab ac">Acompanhamento</span><h3 class="cliente-form-tit">Minhas solicitações</h3></div>
+          <?php if ($ocultarDisponivel && $qtdFinalizadas > 0): ?>
+            <form method="post" onsubmit="return confirm('Remover da sua lista todas as solicitações concluídas ou canceladas?')">
+              <button class="btn out sm admin-btn-cancel" name="limpar_finalizadas" value="1">Limpar finalizadas (<?php echo $qtdFinalizadas; ?>)</button>
+            </form>
+          <?php endif; ?>
         </div>
-        <?php if (pg_num_rows($rServicos) > 0): ?>
-          <?php while ($s = pg_fetch_assoc($rServicos)): ?>
+        <?php if ((int)($_GET["removido"] ?? 0) > 0): ?>
+          <?php $qtdRemovida = (int)$_GET["removido"]; ?>
+          <div class="alert ok" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 9.8"/></svg><div><b><?php echo $qtdRemovida === 1 ? "1 solicitação removida da sua lista" : $qtdRemovida . " solicitações removidas da sua lista"; ?></b></div></div>
+        <?php endif; ?>
+        <?php if (count($servicos) > 0): ?>
+          <?php foreach ($servicos as $s): ?>
             <?php
               $rotulosStatus = array("SOLICITADO" => "Solicitado", "EM_ANALISE" => "Em análise", "CONCLUIDO" => "Concluído", "CANCELADO" => "Cancelado");
               $anexosServico = $anexosPorServico[$s["id_servicos"]] ?? array();
@@ -512,9 +554,14 @@ if ($rAnexos) {
                   <input type="hidden" name="id_servico" value="<?php echo (int)$s["id_servicos"]; ?>">
                   <button class="btn out sm admin-btn-cancel" name="cancelar_servico" value="1">Cancelar solicitação</button>
                 </form>
+              <?php elseif ($ocultarDisponivel && ($s["status"] === "CONCLUIDO" || $s["status"] === "CANCELADO")): ?>
+                <form method="post" class="cliente-req-foot" onsubmit="return confirm('Remover esta solicitação da sua lista?')">
+                  <input type="hidden" name="id_servico" value="<?php echo (int)$s["id_servicos"]; ?>">
+                  <button class="btn out sm admin-btn-cancel" name="remover_servico" value="1">Remover da lista</button>
+                </form>
               <?php endif; ?>
             </article>
-          <?php endwhile; ?>
+          <?php endforeach; ?>
         <?php else: ?>
           <div class="empty">
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M14 4v6h6M8 14h8M8 18h5"/></svg></span>

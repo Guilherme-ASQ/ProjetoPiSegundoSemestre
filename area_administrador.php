@@ -97,6 +97,34 @@ $senha = $u["senha"];
 $telefone = $u["telefone"];
 $erro = "";
 
+function garantirColunasOcultar($conexao) {
+    $r = pg_query($conexao, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'servicos' AND column_name IN ('oculto_admin', 'oculto_cliente')");
+    if ($r && (int) pg_fetch_result($r, 0, 0) === 2) return true;
+    $ok = pg_query($conexao, "ALTER TABLE servicos ADD COLUMN IF NOT EXISTS oculto_admin BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN IF NOT EXISTS oculto_cliente BOOLEAN NOT NULL DEFAULT FALSE");
+    if (!$ok) error_log("Não foi possível criar as colunas de ocultar: " . pg_last_error($conexao));
+    return (bool) $ok;
+}
+$ocultarDisponivel = garantirColunasOcultar($conexao);
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && $ocultarDisponivel && (isset($_POST["remover_concluido"]) || isset($_POST["limpar_concluidos"]))) {
+    if (isset($_POST["limpar_concluidos"])) {
+        $r = pg_query(
+            $conexao,
+            "UPDATE servicos SET oculto_admin = TRUE WHERE status = 'CONCLUIDO' AND oculto_admin = FALSE AND id_usuario IN (SELECT id_usuarios FROM usuarios WHERE tipo_usuario = 'CLIENTE')"
+        );
+    } else {
+        $id = filter_var($_POST["id_servico"] ?? "", FILTER_VALIDATE_INT);
+        $r = $id ? pg_query_params(
+            $conexao,
+            "UPDATE servicos SET oculto_admin = TRUE WHERE id_servicos = $1 AND status = 'CONCLUIDO'",
+            array($id)
+        ) : false;
+    }
+    if (!$r) error_log("Erro ao remover concluídos do painel: " . pg_last_error($conexao));
+    header("Location: area_administrador.php" . ($r ? "?removido=" . pg_affected_rows($r) : ""));
+    exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["enviar_resposta"])) {
     $idServico = filter_var($_POST["id_servico"] ?? "", FILTER_VALIDATE_INT);
     $resposta = trim($_POST["resposta"] ?? "");
@@ -169,10 +197,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["salvar"])) {
     }
 }
 
-function buscarServicos($conexao, $status) {
+function buscarServicos($conexao, $status, $esconderOcultos = false) {
     return pg_query_params(
         $conexao,
-        "SELECT s.id_servicos AS id_servico, u.nome, u.email, u.telefone, s.tipo_projeto, s.endereco, s.descricao AS solicitacao, s.resposta, s.status FROM servicos s INNER JOIN usuarios u ON u.id_usuarios = s.id_usuario WHERE u.tipo_usuario = 'CLIENTE' AND s.status = $1 ORDER BY s.id_servicos ASC",
+        "SELECT s.id_servicos AS id_servico, u.nome, u.email, u.telefone, s.tipo_projeto, s.endereco, s.descricao AS solicitacao, s.resposta, s.status FROM servicos s INNER JOIN usuarios u ON u.id_usuarios = s.id_usuario WHERE u.tipo_usuario = 'CLIENTE' AND s.status = $1" . ($esconderOcultos ? " AND s.oculto_admin = FALSE" : "") . " ORDER BY s.id_servicos ASC",
         array($status)
     );
 }
@@ -199,9 +227,9 @@ function buscarAnexosAdmin($conexao, $idServico, $base, $key, $bucket) {
     return $lista;
 }
 
-$rSolicitados = buscarServicos($conexao, "SOLICITADO");
-$rAnalise = buscarServicos($conexao, "EM_ANALISE");
-$rConcluidos = buscarServicos($conexao, "CONCLUIDO");
+$rSolicitados = buscarServicos($conexao, "SOLICITADO", $ocultarDisponivel);
+$rAnalise = buscarServicos($conexao, "EM_ANALISE", $ocultarDisponivel);
+$rConcluidos = buscarServicos($conexao, "CONCLUIDO", $ocultarDisponivel);
 
 if (!$rSolicitados || !$rAnalise || !$rConcluidos) {
     die("Erro ao carregar os serviços.");
@@ -229,10 +257,21 @@ function adminRotuloStatus($status) {
     return $rotulos[$status] ?? str_replace("_", " ", $status);
 }
 
-function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $bucket) {
+function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $bucket, $podeRemover = false) {
     $quantidade = pg_num_rows($resultado);
+    $removivel = $podeRemover && $tipo === "CONCLUIDO";
     echo '<section class="admin-col" id="admin-status-' . strtolower($tipo) . '">';
     echo '<h2 class="admin-col-title">' . adminTexto($titulo) . ' <span>' . $quantidade . '</span></h2>';
+    if ($removivel && $quantidade > 0) {
+        echo '<div class="admin-col-tools">';
+        echo '<p>Remova do painel o que já foi finalizado. O cliente continua vendo a solicitação no histórico dele.</p>';
+        echo '<form method="post" onsubmit="return confirm(\'Remover do painel todas as ' . $quantidade . ' solicitações concluídas?\')">';
+        echo '<button class="btn out sm admin-btn-cancel" name="limpar_concluidos" value="1" type="submit">';
+        echo '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+        echo 'LIMPAR TODAS AS CONCLUÍDAS (' . $quantidade . ')</button>';
+        echo '</form>';
+        echo '</div>';
+    }
     echo '<div class="admin-list">';
     if ($quantidade === 0) {
         echo '<div class="empty admin-empty">';
@@ -348,6 +387,15 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
             echo '</div>';
         }
 
+        if ($removivel) {
+            echo '<div class="admin-req-foot">';
+            echo '<span class="admin-req-next">Serviço finalizado</span>';
+            echo '<div class="admin-req-actions">';
+            echo '<form method="post" onsubmit="return confirm(\'Remover a solicitação #' . $idServico . ' do painel?\')"><input type="hidden" name="id_servico" value="' . $idServico . '"><button class="btn out sm admin-btn-cancel" name="remover_concluido" value="1" type="submit">REMOVER DO PAINEL</button></form>';
+            echo '</div>';
+            echo '</div>';
+        }
+
         echo '</article>';
     }
     echo '</div>';
@@ -396,6 +444,10 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
 <?php endif; ?>
 </div>
 
+<?php if ((int)($_GET["removido"] ?? 0) > 0): ?>
+<?php $qtdRemovida = (int) $_GET["removido"]; ?>
+<div class="alert ok" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 9.8"/></svg><div><b><?php echo $qtdRemovida === 1 ? "1 solicitação removida do painel" : $qtdRemovida . " solicitações removidas do painel"; ?></b><p>Elas continuam no histórico do cliente.</p></div></div>
+<?php endif; ?>
 <?php if ($erro): ?>
 <p class="msg err"><?php echo adminTexto($erro); ?></p>
 <?php endif; ?>
@@ -468,7 +520,7 @@ function mostraTabelaAdmin($resultado, $titulo, $tipo, $conexao, $base, $key, $b
 <?php
 mostraTabelaAdmin($rSolicitados, "Novas solicitações", "SOLICITADO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
 mostraTabelaAdmin($rAnalise, "Em análise", "EM_ANALISE", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
-mostraTabelaAdmin($rConcluidos, "Concluídas", "CONCLUIDO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket);
+mostraTabelaAdmin($rConcluidos, "Concluídas", "CONCLUIDO", $conexao, $supabaseUrl, $supabaseKey, $nomeBucket, $ocultarDisponivel);
 ?>
 </div>
 </div>
