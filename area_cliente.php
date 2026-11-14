@@ -85,6 +85,19 @@ function urlAssinadaSupabase($supabaseUrl, $supabaseKey, $nomeBucket, $caminho) 
 }
 
 $erroPagina = "";
+$erroSolicitacao = "";
+$maxArquivos = 5;
+$maxMbArquivo = 10;
+$formatosAceitos = "JPG, PNG, WebP ou PDF";
+$valoresForm = array("tipo_projeto" => "", "endereco" => "", "descricao" => "");
+
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    empty($_POST) && empty($_FILES) &&
+    (int)($_SERVER["CONTENT_LENGTH"] ?? 0) > 0
+) {
+    $erroSolicitacao = "Os arquivos enviados ficaram grandes demais. Envie até " . $maxArquivos . " arquivos (" . $formatosAceitos . ") com no máximo " . $maxMbArquivo . " MB cada.";
+}
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["salvar"])) {
     $novoNome = trim($_POST["nome"] ?? "");
@@ -127,10 +140,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["solicitar_servico"]))
     $endereco = trim($_POST["endereco"] ?? "");
     $descricao = trim($_POST["descricao"] ?? "");
 
-    if ($tipoProjeto === "") die("Selecione o tipo de projeto.");
-    if ($endereco === "") die("Informe a cidade ou o endereço do projeto.");
-    if ($descricao === "") die("Descreva o serviço que deseja solicitar.");
-    if (!$supabaseUrl || !$supabaseKey) die("A configuração do Supabase não foi encontrada.");
+    $valoresForm = array("tipo_projeto" => $tipoProjeto, "endereco" => $endereco, "descricao" => $descricao);
+
+    if ($tipoProjeto === "") $erroSolicitacao = "Selecione o tipo de projeto.";
+    elseif ($endereco === "") $erroSolicitacao = "Informe a cidade ou o endereço do projeto.";
+    elseif ($descricao === "") $erroSolicitacao = "Descreva o serviço que deseja solicitar.";
+    elseif (!$supabaseUrl || !$supabaseKey) $erroSolicitacao = "O envio de solicitações está indisponível no momento. Tente novamente mais tarde.";
 
     $arquivos = array();
     $permitidos = array(
@@ -148,24 +163,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["solicitar_servico"]))
         }
     }
 
-    if ($selecionados > 5) {
-        die("Você pode anexar no máximo 5 arquivos por solicitação.");
+    if ($erroSolicitacao === "" && $selecionados > $maxArquivos) {
+        $erroSolicitacao = "Você selecionou " . $selecionados . " arquivos. O limite é de " . $maxArquivos . " arquivos por solicitação.";
     }
 
-    for ($i = 0; $i < $total; $i++) {
+    for ($i = 0; $erroSolicitacao === "" && $i < $total; $i++) {
         $err = $_FILES["anexos"]["error"][$i];
+        $nomeArquivo = basename($_FILES["anexos"]["name"][$i] ?? "");
         if ($err === UPLOAD_ERR_NO_FILE) continue;
-        if ($err !== UPLOAD_ERR_OK) die("Erro ao receber um arquivo. Tente novamente.");
+        if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+            $erroSolicitacao = "O arquivo \"" . $nomeArquivo . "\" passa do limite de " . $maxMbArquivo . " MB. Reduza o tamanho ou envie outro arquivo.";
+            break;
+        }
+        if ($err !== UPLOAD_ERR_OK) {
+            $erroSolicitacao = "Não conseguimos receber o arquivo \"" . $nomeArquivo . "\". Tente enviar novamente.";
+            break;
+        }
 
         $tmp = $_FILES["anexos"]["tmp_name"][$i];
         $size = (int)$_FILES["anexos"]["size"][$i];
-        if ($size <= 0 || $size > 10 * 1024 * 1024) die("Cada arquivo deve ter no máximo 10 MB.");
+        if ($size <= 0 || $size > $maxMbArquivo * 1024 * 1024) {
+            $erroSolicitacao = "O arquivo \"" . $nomeArquivo . "\" passa do limite de " . $maxMbArquivo . " MB. Reduza o tamanho ou envie outro arquivo.";
+            break;
+        }
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime = $finfo ? finfo_file($finfo, $tmp) : false;
         if ($finfo) finfo_close($finfo);
 
-        if (!isset($permitidos[$mime])) die("Formato não permitido. Envie JPG, PNG, WebP ou PDF.");
+        if (!isset($permitidos[$mime])) {
+            $erroSolicitacao = "O arquivo \"" . $nomeArquivo . "\" não está em um formato aceito. Envie apenas " . $formatosAceitos . ".";
+            break;
+        }
 
         $arquivos[] = array(
             "tmp" => $tmp,
@@ -175,100 +204,102 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["solicitar_servico"]))
         );
     }
 
-    pg_query($conexao, "BEGIN");
-    $rServico = pg_query_params(
-        $conexao,
-        "INSERT INTO servicos (tipo_projeto, endereco, descricao, status, id_usuario) VALUES ($1, $2, $3, 'SOLICITADO', $4) RETURNING id_servicos",
-        array($tipoProjeto, $endereco, $descricao, $idUsuario)
-    );
-
-    if (!$rServico) {
-        pg_query($conexao, "ROLLBACK");
-        error_log("Erro ao criar serviço: " . pg_last_error($conexao));
-        die("Não foi possível registrar a solicitação.");
-    }
-
-    $idServico = (int)pg_fetch_result($rServico, 0, "id_servicos");
-    $enviados = array();
-    $falhou = false;
-
-    foreach ($arquivos as $arq) {
-        $nomeArmazenado = bin2hex(random_bytes(16)) . "." . $arq["ext"];
-        $caminho = $idUsuario . "/" . $idServico . "/" . $nomeArmazenado;
-        $urlUpload = $supabaseUrl . "/storage/v1/object/" . rawurlencode($nomeBucket) . "/" . implode("/", array_map("rawurlencode", explode("/", $caminho)));
-        $conteudo = file_get_contents($arq["tmp"]);
-
-        if ($conteudo === false) {
-            $falhou = true;
-            break;
-        }
-
-        $curl = curl_init($urlUpload);
-        curl_setopt_array($curl, array(
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => array(
-                "apikey: " . $supabaseKey,
-                "Authorization: Bearer " . $supabaseKey,
-                "Content-Type: " . $arq["mime"],
-                "x-upsert: false"
-            ),
-            CURLOPT_POSTFIELDS => $conteudo,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 120
-        ));
-
-        $res = curl_exec($curl);
-        $http = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($curl);
-        curl_close($curl);
-
-        if ($res === false || $http < 200 || $http >= 300) {
-            error_log("Falha no upload Supabase. HTTP: " . $http . " CURL: " . $curlErr . " Resposta: " . (is_string($res) ? $res : ""));
-            $falhou = true;
-            break;
-        }
-
-        $enviados[] = $caminho;
-
-        $rAnexo = pg_query_params(
+    if ($erroSolicitacao === "") {
+        pg_query($conexao, "BEGIN");
+        $rServico = pg_query_params(
             $conexao,
-            "INSERT INTO anexos_servicos (id_servico, nome_arquivo, caminho_arquivo) VALUES ($1, $2, $3)",
-            array($idServico, $arq["nome"], $caminho)
+            "INSERT INTO servicos (tipo_projeto, endereco, descricao, status, id_usuario) VALUES ($1, $2, $3, 'SOLICITADO', $4) RETURNING id_servicos",
+            array($tipoProjeto, $endereco, $descricao, $idUsuario)
         );
 
-        if (!$rAnexo) {
-            error_log("Erro ao gravar anexo no Neon: " . pg_last_error($conexao));
-            $falhou = true;
-            break;
+        if (!$rServico) {
+            pg_query($conexao, "ROLLBACK");
+            error_log("Erro ao criar serviço: " . pg_last_error($conexao));
+            $erroSolicitacao = "Não foi possível registrar a solicitação. Tente novamente.";
+        } else {
+            $idServico = (int)pg_fetch_result($rServico, 0, "id_servicos");
+            $enviados = array();
+            $falhou = false;
+
+            foreach ($arquivos as $arq) {
+                $nomeArmazenado = bin2hex(random_bytes(16)) . "." . $arq["ext"];
+                $caminho = $idUsuario . "/" . $idServico . "/" . $nomeArmazenado;
+                $urlUpload = $supabaseUrl . "/storage/v1/object/" . rawurlencode($nomeBucket) . "/" . implode("/", array_map("rawurlencode", explode("/", $caminho)));
+                $conteudo = file_get_contents($arq["tmp"]);
+
+                if ($conteudo === false) {
+                    $falhou = true;
+                    break;
+                }
+
+                $curl = curl_init($urlUpload);
+                curl_setopt_array($curl, array(
+                    CURLOPT_POST => true,
+                    CURLOPT_HTTPHEADER => array(
+                        "apikey: " . $supabaseKey,
+                        "Authorization: Bearer " . $supabaseKey,
+                        "Content-Type: " . $arq["mime"],
+                        "x-upsert: false"
+                    ),
+                    CURLOPT_POSTFIELDS => $conteudo,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_CONNECTTIMEOUT => 15,
+                    CURLOPT_TIMEOUT => 120
+                ));
+
+                $res = curl_exec($curl);
+                $http = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+                $curlErr = curl_error($curl);
+                curl_close($curl);
+
+                if ($res === false || $http < 200 || $http >= 300) {
+                    error_log("Falha no upload Supabase. HTTP: " . $http . " CURL: " . $curlErr . " Resposta: " . (is_string($res) ? $res : ""));
+                    $falhou = true;
+                    break;
+                }
+
+                $enviados[] = $caminho;
+
+                $rAnexo = pg_query_params(
+                    $conexao,
+                    "INSERT INTO anexos_servicos (id_servico, nome_arquivo, caminho_arquivo) VALUES ($1, $2, $3)",
+                    array($idServico, $arq["nome"], $caminho)
+                );
+
+                if (!$rAnexo) {
+                    error_log("Erro ao gravar anexo no Neon: " . pg_last_error($conexao));
+                    $falhou = true;
+                    break;
+                }
+            }
+
+            if ($falhou) {
+                foreach ($enviados as $caminho) {
+                    $urlDel = $supabaseUrl . "/storage/v1/object/" . rawurlencode($nomeBucket) . "/" . implode("/", array_map("rawurlencode", explode("/", $caminho)));
+                    $c = curl_init($urlDel);
+                    curl_setopt_array($c, array(
+                        CURLOPT_CUSTOMREQUEST => "DELETE",
+                        CURLOPT_HTTPHEADER => array(
+                            "apikey: " . $supabaseKey,
+                            "Authorization: Bearer " . $supabaseKey
+                        ),
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_TIMEOUT => 20
+                    ));
+                    curl_exec($c);
+                    curl_close($c);
+                }
+                pg_query_params($conexao, "DELETE FROM anexos_servicos WHERE id_servico = $1", array($idServico));
+                pg_query_params($conexao, "DELETE FROM servicos WHERE id_servicos = $1 AND id_usuario = $2", array($idServico, $idUsuario));
+                pg_query($conexao, "COMMIT");
+                $erroSolicitacao = "Não foi possível salvar a solicitação ou enviar um dos arquivos. Tente novamente.";
+            } else {
+                pg_query($conexao, "COMMIT");
+                header("Location: area_cliente.php?sucesso=1");
+                exit;
+            }
         }
     }
-
-    if ($falhou) {
-        foreach ($enviados as $caminho) {
-            $urlDel = $supabaseUrl . "/storage/v1/object/" . rawurlencode($nomeBucket) . "/" . implode("/", array_map("rawurlencode", explode("/", $caminho)));
-            $c = curl_init($urlDel);
-            curl_setopt_array($c, array(
-                CURLOPT_CUSTOMREQUEST => "DELETE",
-                CURLOPT_HTTPHEADER => array(
-                    "apikey: " . $supabaseKey,
-                    "Authorization: Bearer " . $supabaseKey
-                ),
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 20
-            ));
-            curl_exec($c);
-            curl_close($c);
-        }
-        pg_query_params($conexao, "DELETE FROM anexos_servicos WHERE id_servico = $1", array($idServico));
-        pg_query_params($conexao, "DELETE FROM servicos WHERE id_servicos = $1 AND id_usuario = $2", array($idServico, $idUsuario));
-        pg_query($conexao, "COMMIT");
-        die("Não foi possível salvar a solicitação ou enviar um dos arquivos.");
-    }
-
-    pg_query($conexao, "COMMIT");
-    header("Location: area_cliente.php?sucesso=1");
-    exit;
 }
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["cancelar_servico"])) {
@@ -349,113 +380,144 @@ if ($rAnexos) {
     </div>
 
     <?php if (isset($_GET["sucesso"])): ?>
-      <p class="msg ok">Solicitação enviada com sucesso.</p>
+      <div class="alert ok" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 9.8"/></svg><div><b>Solicitação enviada com sucesso!</b><p>O escritório vai analisar seu pedido e responder por aqui.</p></div></div>
     <?php endif; ?>
     <?php if ($erroPagina): ?>
-      <p class="msg err"><?php echo htmlspecialchars($erroPagina); ?></p>
+      <div class="alert err" role="alert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg><div><b>Não foi possível concluir</b><p><?php echo htmlspecialchars($erroPagina); ?></p></div></div>
     <?php endif; ?>
 
     <?php if (isset($_GET["editar"])): ?>
-      <section class="sheet pad-lg edit-box">
+      <section class="sheet pad-lg edit-box cliente-edit">
         <span class="lab ac">Minha conta</span>
         <h2>Editar informações</h2>
+        <p class="hint">Deixe a senha em branco para manter a atual.</p>
         <form method="post">
-          <label><span class="lab">Nome</span><input name="nome" value="<?php echo htmlspecialchars($nome, ENT_QUOTES, "UTF-8"); ?>" required></label>
-          <label><span class="lab">E-mail</span><input type="email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>" required></label>
-          <label><span class="lab">Telefone</span><input name="telefone" value="<?php echo htmlspecialchars($telefone ?? "", ENT_QUOTES, "UTF-8"); ?>"></label>
-          <label><span class="lab">Nova senha (opcional)</span><input type="password" name="senha" autocomplete="new-password"></label>
-          <button class="btn" name="salvar" value="1">Salvar alterações</button>
-          <a class="btn out" href="area_cliente.php">Cancelar</a>
+          <div class="row-2">
+            <label><span class="lab">Nome</span><input name="nome" value="<?php echo htmlspecialchars($nome, ENT_QUOTES, "UTF-8"); ?>" required></label>
+            <label><span class="lab">E-mail</span><input type="email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>" required></label>
+          </div>
+          <div class="row-2">
+            <label><span class="lab">Telefone</span><input name="telefone" value="<?php echo htmlspecialchars($telefone ?? "", ENT_QUOTES, "UTF-8"); ?>"></label>
+            <label><span class="lab">Nova senha (opcional)</span><input type="password" name="senha" autocomplete="new-password"></label>
+          </div>
+          <div class="cliente-edit-actions">
+            <button class="btn" name="salvar" value="1">Salvar alterações</button>
+            <a class="btn out" href="area_cliente.php">Cancelar</a>
+          </div>
         </form>
       </section>
     <?php endif; ?>
 
     <div class="dash">
       <div class="sticky">
-        <section class="sheet pad-lg tape">
+        <section class="sheet pad-lg tape" id="nova-solicitacao">
           <span class="lab ac">Nova solicitação</span>
-          <h3 style="font-family:var(--f-disp);font-weight:300;font-size:1.55rem;margin:8px 0 18px">Conte a sua ideia</h3>
-          <p class="hint" style="margin:6px 0 10px">Anexe até 5 arquivos JPG, PNG, WebP ou PDF (máximo de 10 MB por arquivo).</p>
-          <form method="post" enctype="multipart/form-data">
+          <h3 class="cliente-form-tit">Conte a sua ideia</h3>
+          <p class="hint">Preencha os campos abaixo. Se tiver fotos, plantas ou referências, anexe também.</p>
+          <?php if ($erroSolicitacao): ?>
+            <div class="alert err" role="alert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg><div><b>Não foi possível enviar a solicitação</b><p><?php echo htmlspecialchars($erroSolicitacao, ENT_QUOTES, "UTF-8"); ?></p></div></div>
+          <?php endif; ?>
+          <form method="post" enctype="multipart/form-data" class="cliente-form">
             <label>
               <span class="lab">Tipo de projeto</span>
               <select id="tipoProjeto" name="tipo_projeto" required>
                 <option value="">Selecione uma opção</option>
-                <option value="Residência (obra nova)">Residência (obra nova)</option>
-                <option value="Reforma e interiores">Reforma e interiores</option>
-                <option value="Espaço comercial">Espaço comercial</option>
-                <option value="Consultoria avulsa">Consultoria avulsa</option>
+                <?php foreach (array("Residência (obra nova)", "Reforma e interiores", "Espaço comercial", "Consultoria avulsa") as $opcao): ?>
+                  <option value="<?php echo htmlspecialchars($opcao, ENT_QUOTES, "UTF-8"); ?>"<?php echo $valoresForm["tipo_projeto"] === $opcao ? " selected" : ""; ?>><?php echo htmlspecialchars($opcao, ENT_QUOTES, "UTF-8"); ?></option>
+                <?php endforeach; ?>
               </select>
             </label>
             <label>
               <span class="lab">Cidade ou endereço</span>
-              <input id="localProjeto" name="endereco" placeholder="Cidade Estado ou endereço completo" required maxlength="255">
+              <input id="localProjeto" name="endereco" placeholder="Cidade Estado ou endereço completo" required maxlength="255" value="<?php echo htmlspecialchars($valoresForm["endereco"], ENT_QUOTES, "UTF-8"); ?>">
             </label>
             <label>
               <span class="lab">Descreva o que você imagina</span>
-              <textarea name="descricao" required maxlength="2000" placeholder="O que gostaria de construir, reformar ou melhorar?"></textarea>
+              <textarea name="descricao" required maxlength="2000" placeholder="O que gostaria de construir, reformar ou melhorar?"><?php echo htmlspecialchars($valoresForm["descricao"], ENT_QUOTES, "UTF-8"); ?></textarea>
             </label>
-            <label>
-              <span class="lab">Anexos (opcional)</span>
-              <input type="file" name="anexos[]" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
-            </label>
-            <button class="btn wide lg" name="solicitar_servico" value="1">Enviar solicitação</button>
+            <div class="upl" data-max="<?php echo $maxArquivos; ?>" data-max-mb="<?php echo $maxMbArquivo; ?>">
+              <div class="upl-head">
+                <span class="lab">Anexos <span class="opc">(opcional)</span></span>
+                <span class="upl-count" aria-live="polite">0 de <?php echo $maxArquivos; ?> arquivos</span>
+              </div>
+              <label class="upl-drop">
+                <span class="upl-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
+                <b>Arraste os arquivos aqui ou <u>clique para escolher</u></b>
+                <small>Até <?php echo $maxArquivos; ?> arquivos · <?php echo $formatosAceitos; ?> · máximo de <?php echo $maxMbArquivo; ?> MB cada</small>
+                <input type="file" name="anexos[]" accept="image/jpeg,image/png,image/webp,application/pdf" multiple aria-label="Escolher arquivos para anexar">
+              </label>
+              <div class="alert warn upl-alert" role="alert" hidden></div>
+              <ul class="upl-list" hidden></ul>
+            </div>
+            <button class="btn wide lg cliente-enviar" name="solicitar_servico" value="1">Enviar solicitação</button>
           </form>
         </section>
       </div>
 
       <div>
-        <div class="head-row" style="margin-bottom:18px">
-          <div><span class="lab ac">Acompanhamento</span><h3 style="font-family:var(--f-disp);font-weight:300;font-size:1.55rem;margin-top:6px">Minhas solicitações</h3></div>
+        <div class="head-row cliente-lista-head">
+          <div><span class="lab ac">Acompanhamento</span><h3 class="cliente-form-tit">Minhas solicitações</h3></div>
         </div>
         <?php if (pg_num_rows($rServicos) > 0): ?>
           <?php while ($s = pg_fetch_assoc($rServicos)): ?>
-            <article class="req">
+            <?php
+              $rotulosStatus = array("SOLICITADO" => "Solicitado", "EM_ANALISE" => "Em análise", "CONCLUIDO" => "Concluído", "CANCELADO" => "Cancelado");
+              $anexosServico = $anexosPorServico[$s["id_servicos"]] ?? array();
+            ?>
+            <article class="req cliente-req">
               <div class="r1">
                 <span class="lab">Solicitação #<?php echo (int)$s["id_servicos"]; ?></span>
-                <span class="st <?php echo htmlspecialchars(strtolower($s["status"])); ?>"><?php echo htmlspecialchars(str_replace("_", " ", $s["status"])); ?></span>
+                <span class="st <?php echo htmlspecialchars(strtolower($s["status"])); ?>"><?php echo htmlspecialchars($rotulosStatus[$s["status"]] ?? str_replace("_", " ", $s["status"])); ?></span>
               </div>
-              <p class="meta">
-                <b>Tipo de projeto:</b> <?php echo htmlspecialchars($s["tipo_projeto"] ?? "Não informado", ENT_QUOTES, "UTF-8"); ?><br>
-                <b>Endereço:</b> <?php echo htmlspecialchars($s["endereco"] ?? "Não informado", ENT_QUOTES, "UTF-8"); ?>
-              </p>
-              <p class="desc"><?php echo nl2br(htmlspecialchars($s["descricao"])); ?></p>
-              <div class="att">
-                <span class="lab">Resposta do escritório</span>
-                <div class="response-content">
-                  <?php if (!empty($s["resposta"])): ?>
-                    <?php echo nl2br(htmlspecialchars($s["resposta"], ENT_QUOTES, "UTF-8")); ?>
-                  <?php else: ?>
-                    <p class="hint">O escritório ainda não respondeu a esta solicitação.</p>
-                  <?php endif; ?>
+              <h4 class="cliente-req-tit"><?php echo htmlspecialchars($s["tipo_projeto"] ?? "Não informado", ENT_QUOTES, "UTF-8"); ?></h4>
+              <p class="cliente-req-local"><?php echo htmlspecialchars($s["endereco"] ?? "Não informado", ENT_QUOTES, "UTF-8"); ?></p>
+              <p class="desc"><?php echo htmlspecialchars($s["descricao"]); ?></p>
+
+              <?php if (!empty($s["resposta"])): ?>
+                <div class="answer">
+                  <span class="lab ac">Resposta do escritório</span>
+                  <p><?php echo htmlspecialchars($s["resposta"], ENT_QUOTES, "UTF-8"); ?></p>
                 </div>
-              </div>
+              <?php else: ?>
+                <p class="hint cliente-aguardando">O escritório ainda não respondeu a esta solicitação.</p>
+              <?php endif; ?>
+
               <div class="att">
-                <span class="lab">Arquivos anexados</span>
-                <div class="attachment-links">
-                  <?php if (!empty($anexosPorServico[$s["id_servicos"]])): ?>
-                    <?php foreach ($anexosPorServico[$s["id_servicos"]] as $a): ?>
-                      <?php if ($a["url"]): ?>
-                        <a href="<?php echo htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8"); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8"); ?></a><br>
+                <span class="lab">Arquivos anexados<?php echo $anexosServico ? " · " . count($anexosServico) : ""; ?></span>
+                <div class="attachment-links admin-attachments">
+                  <?php if ($anexosServico): ?>
+                    <?php foreach ($anexosServico as $a): ?>
+                      <?php $ehImagem = in_array(strtolower(pathinfo($a["nome"], PATHINFO_EXTENSION)), array("jpg", "jpeg", "png", "webp"), true); ?>
+                      <?php if ($a["url"] && $ehImagem): ?>
+                        <a class="admin-attachment-image" href="<?php echo htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8"); ?>" target="_blank" rel="noopener noreferrer">
+                          <img src="<?php echo htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8"); ?>" alt="<?php echo htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8"); ?>" loading="lazy">
+                          <span><?php echo htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8"); ?></span>
+                        </a>
+                      <?php elseif ($a["url"]): ?>
+                        <a class="admin-attachment-file" href="<?php echo htmlspecialchars($a["url"], ENT_QUOTES, "UTF-8"); ?>" target="_blank" rel="noopener noreferrer">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
+                          <span><?php echo htmlspecialchars($a["nome"], ENT_QUOTES, "UTF-8"); ?></span>
+                        </a>
                       <?php else: ?>
-                        <span><?php echo htmlspecialchars($a["nome"]); ?> (link indisponível)</span><br>
+                        <span class="admin-attachment-file is-off"><?php echo htmlspecialchars($a["nome"]); ?> (link indisponível)</span>
                       <?php endif; ?>
                     <?php endforeach; ?>
                   <?php else: ?>
-                    Nenhum anexo.
+                    <span class="admin-muted">Nenhum anexo.</span>
                   <?php endif; ?>
                 </div>
               </div>
               <?php if ($s["status"] === "SOLICITADO" || $s["status"] === "EM_ANALISE"): ?>
-                <form method="post" onsubmit="return confirm('Deseja cancelar esta solicitação?')">
+                <form method="post" class="cliente-req-foot" onsubmit="return confirm('Deseja cancelar esta solicitação?')">
                   <input type="hidden" name="id_servico" value="<?php echo (int)$s["id_servicos"]; ?>">
-                  <button class="btn out sm" name="cancelar_servico" value="1">Cancelar solicitação</button>
+                  <button class="btn out sm admin-btn-cancel" name="cancelar_servico" value="1">Cancelar solicitação</button>
                 </form>
               <?php endif; ?>
             </article>
           <?php endwhile; ?>
         <?php else: ?>
           <div class="empty">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M14 4v6h6M8 14h8M8 18h5"/></svg></span>
             <b>Você ainda não enviou solicitações</b>
             <p>Preencha o formulário ao lado para começar.</p>
           </div>
@@ -465,22 +527,151 @@ if ($rAnexos) {
   </div>
 </main>
 <footer>
-  <div class="wrap footer-grid">
-    <div>
-      <a class="brand" href="index.php"><b>Um Pé de IDEIA</b></a>
-      <p>Área exclusiva para clientes do escritório.</p>
-    </div>
-    <div>
-      <h4>Navegar</h4>
-      <a href="index.php">Início</a>
-      <a href="index.php#projetos">Galeria</a>
-    </div>
-    <div>
-      <h4>Contato</h4>
-      <a href="mailto:aspi@umpedeideia.com">aspi@umpedeideia.com</a>
-    </div>
-  </div>
+<div class="wrap">
+<div class="cols">
+<div>
+<a class="brand" href="index.php"><img src="https://res.cloudinary.com/p2srhjwx/image/upload/v1792142855/Logo_Um_P%C3%89_deIDEIA.jpg" alt=""><span><b>Um Pé de IDEIA</b><span class="lab">Arquitetura &amp; Design</span></span></a>
+<p>Croquis à mão, projeto técnico e obra acompanhada de perto. Escritório em Santana, zona norte de São Paulo.</p>
+<div class="socials">
+<a href="https://www.instagram.com/arquiteto.aspi/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg></a>
+<a href="https://www.facebook.com/umpedeideia/" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24"><path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V3.9c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3V10H7.3v3h2.8v8z"/></svg></a>
+<a href="https://wa.me/5511982916734?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20conversar%20sobre%20um%20projeto." target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20.5l1.8-5A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.6 9.2c.2 2.5 2.4 4.7 4.9 4.9"/></svg></a>
+</div>
+</div>
+<div>
+<h4>Navegar</h4>
+<a href="index.php#escritorio">Escritório</a><a href="index.php#equipe">Equipe</a><a href="index.php#projetos">Galeria</a><a href="index.php#servicos">Serviços</a><a href="index.php#feedbacks">Feedbacks</a><a href="index.php#contato">Contato</a>
+</div>
+<div>
+<h4>Contato</h4>
+<a href="mailto:aspi@umpedeideia.com">aspi@umpedeideia.com</a>
+<a href="tel:+5511982916734">(11) 98291-6734</a>
+<a href="index.php#acesso">Login</a>
+</div>
+</div>
+<div class="end">
+<span>© <span id="ano">2026</span> Um Pé de IDEIA · Todos os direitos reservados</span>
+<span>Três especialistas, um escritório · São Paulo SP</span>
+</div>
+</div>
 </footer>
+<script>
+(function () {
+  var box = document.querySelector('.upl');
+  if (!box) return;
+  var form = box.closest('form');
+  var input = box.querySelector('input[type=file]');
+  var drop = box.querySelector('.upl-drop');
+  var lista = box.querySelector('.upl-list');
+  var alerta = box.querySelector('.upl-alert');
+  var contador = box.querySelector('.upl-count');
+  var botao = form.querySelector('.cliente-enviar');
+  var max = parseInt(box.getAttribute('data-max'), 10) || 5;
+  var maxMb = parseInt(box.getAttribute('data-max-mb'), 10) || 10;
+  var tipos = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  var extensoes = /\.(jpe?g|png|webp|pdf)$/i;
+  var regra = 'Envie até ' + max + ' arquivos JPG, PNG, WebP ou PDF, com no máximo ' + maxMb + ' MB cada.';
+  var arquivos = [];
+  var urls = [];
+  var enviando = false;
+  var editavel = (function () { try { return !!new DataTransfer().items; } catch (e) { return false; } })();
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function tamanho(b) { return b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+  function formatoOk(f) { return tipos.indexOf(f.type) !== -1 || (!f.type && extensoes.test(f.name)); }
+
+  function avisar(msgs) {
+    if (!msgs.length) { alerta.hidden = true; alerta.innerHTML = ''; return; }
+    alerta.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></svg>' +
+      '<div><b>' + (msgs.length > 1 ? 'Alguns arquivos não foram adicionados' : 'Arquivo não adicionado') + '</b><ul>' +
+      msgs.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') +
+      '</ul><p>' + esc(regra) + '</p></div>';
+    alerta.hidden = false;
+  }
+
+  function sincronizar() {
+    if (!editavel) return;
+    var dt = new DataTransfer();
+    arquivos.forEach(function (f) { dt.items.add(f); });
+    input.files = dt.files;
+  }
+
+  function desenhar() {
+    urls.forEach(function (u) { URL.revokeObjectURL(u); });
+    urls = [];
+    lista.innerHTML = arquivos.map(function (f, i) {
+      var imagem = /^image\//.test(f.type);
+      var thumb;
+      if (imagem) {
+        var u = URL.createObjectURL(f); urls.push(u);
+        thumb = '<img src="' + u + '" alt="">';
+      } else {
+        thumb = '<span class="upl-pdf">PDF</span>';
+      }
+      return '<li class="upl-item">' + '<span class="upl-thumb">' + thumb + '</span>' +
+        '<span class="upl-info"><b>' + esc(f.name) + '</b><small>' + tamanho(f.size) + '</small></span>' +
+        (editavel ? '<button type="button" class="upl-rm" data-i="' + i + '" aria-label="Remover ' + esc(f.name) + '">×</button>' : '') +
+        '</li>';
+    }).join('');
+    lista.hidden = !arquivos.length;
+    contador.textContent = arquivos.length + ' de ' + max + ' arquivo' + (max === 1 ? '' : 's');
+    contador.classList.toggle('is-full', arquivos.length >= max);
+    box.classList.toggle('has-files', arquivos.length > 0);
+  }
+
+  input.addEventListener('change', function () {
+    var novos = Array.prototype.slice.call(input.files || []);
+    var msgs = [];
+    var sobrou = 0;
+    if (!editavel) arquivos = [];
+    novos.forEach(function (f) {
+      var repetido = arquivos.some(function (a) { return a.name === f.name && a.size === f.size; });
+      if (!formatoOk(f)) msgs.push('"' + f.name + '" não está em um formato aceito.');
+      else if (f.size > maxMb * 1048576) msgs.push('"' + f.name + '" tem ' + tamanho(f.size) + ' e passa do limite de ' + maxMb + ' MB.');
+      else if (repetido) return;
+      else if (arquivos.length >= max) sobrou++;
+      else arquivos.push(f);
+    });
+    if (sobrou) msgs.push('O limite é de ' + max + ' arquivos por solicitação. ' + (sobrou === 1 ? '1 arquivo ficou' : sobrou + ' arquivos ficaram') + ' de fora.');
+    if (!editavel && msgs.length) { arquivos = []; input.value = ''; }
+    sincronizar();
+    desenhar();
+    avisar(msgs);
+  });
+
+  lista.addEventListener('click', function (e) {
+    var b = e.target.closest('.upl-rm');
+    if (!b) return;
+    arquivos.splice(parseInt(b.getAttribute('data-i'), 10), 1);
+    sincronizar();
+    desenhar();
+    avisar([]);
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function () { drop.classList.add('is-over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function () { drop.classList.remove('is-over'); }); });
+
+  form.addEventListener('submit', function (e) {
+    var atuais = Array.prototype.slice.call(input.files || []);
+    var msgs = [];
+    if (atuais.length > max) msgs.push('Você selecionou ' + atuais.length + ' arquivos. O limite é de ' + max + '.');
+    atuais.forEach(function (f) {
+      if (!formatoOk(f)) msgs.push('"' + f.name + '" não está em um formato aceito.');
+      else if (f.size > maxMb * 1048576) msgs.push('"' + f.name + '" passa do limite de ' + maxMb + ' MB.');
+    });
+    if (msgs.length) {
+      e.preventDefault();
+      avisar(msgs);
+      alerta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (enviando) { e.preventDefault(); return; }
+    enviando = true;
+    botao.classList.add('is-loading');
+    botao.textContent = atuais.length ? 'Enviando arquivos…' : 'Enviando…';
+  });
+})();
+</script>
 <script src="script.js"></script>
 </body>
 </html>
