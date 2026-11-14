@@ -167,8 +167,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
             $erro = "Este link de redefinição é inválido ou expirou.";
             $tokenRedefinicao = "";
-        } elseif (strlen($novaSenha) < 8) {
-            $erro = "A nova senha deve ter pelo menos 8 caracteres.";
+        } elseif (strlen($novaSenha) < 6) {
+            $erro = "A senha deve ter pelo menos 6 caracteres.";
             $tokenRedefinicao = $token;
         } elseif ($novaSenha !== $confirmacao) {
             $erro = "As senhas não coincidem.";
@@ -616,11 +616,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <?php if ($tokenRedefinicao !== ""): ?>
           <span class="lab ac lab-line">Redefinir senha</span>
           <h2 class="tit">Crie uma nova senha</h2>
-          <p class="sub">Escolha uma senha com pelo menos 8 caracteres.</p>
+          <p class="sub">Escolha uma senha com pelo menos 6 caracteres.</p>
           <form method="post">
             <input type="hidden" name="token" value="<?php echo htmlspecialchars($tokenRedefinicao, ENT_QUOTES, "UTF-8"); ?>">
-            <label><span class="lab">Nova senha</span><input type="password" name="nova_senha" required minlength="8" autocomplete="new-password"></label>
-            <label><span class="lab">Confirme a nova senha</span><input type="password" name="confirmar_senha" required minlength="8" autocomplete="new-password"></label>
+            <label>
+              <span class="lab">Nova senha</span>
+              <span class="pw">
+                <input type="password" name="nova_senha" required minlength="6" autocomplete="new-password" placeholder="Mínimo de 6 caracteres">
+                <button type="button" class="eye" aria-label="Mostrar senha">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </span>
+            </label>
+            <label>
+              <span class="lab">Confirme a nova senha</span>
+              <span class="pw">
+                <input type="password" name="confirmar_senha" required minlength="6" autocomplete="new-password" placeholder="Repita a nova senha">
+                <button type="button" class="eye" aria-label="Mostrar senha">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </span>
+            </label>
             <button class="btn wide lg" type="submit" name="redefinir_senha" value="1">Salvar nova senha</button>
           </form>
           <p class="troca"><a class="link" href="index.php#acesso">Voltar para entrar</a></p>
