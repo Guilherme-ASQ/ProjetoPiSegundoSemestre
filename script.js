@@ -88,9 +88,21 @@ const toast = (txt, ms = 3600) => {
   const cards = $$('.feedback-card', track);
   if (!cards.length) return;
   let atual = 0;
+  const dotsBox = $('#feedbackDots');
+  const dots = dotsBox ? cards.map((_, i) => {
+    const d = document.createElement('button');
+    d.type = 'button';
+    d.className = 'feedback-dot';
+    d.setAttribute('role', 'tab');
+    d.setAttribute('aria-label', 'Depoimento ' + (i + 1) + ' de ' + cards.length);
+    d.addEventListener('click', () => mostra(i));
+    dotsBox.appendChild(d);
+    return d;
+  }) : [];
 
   const mostra = indice => {
     atual = (indice + cards.length) % cards.length;
+    dots.forEach((d, i) => { d.classList.toggle('is-active', i === atual); d.setAttribute('aria-selected', i === atual ? 'true' : 'false'); });
     cards.forEach((card, i) => {
       card.classList.remove('is-active', 'is-prev', 'is-next');
       card.removeAttribute('aria-current');

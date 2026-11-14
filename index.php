@@ -497,69 +497,73 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     </ol>
   </div>
 </section>
-<section class="sec tight" id="feedbacks">
+<section class="sec tight feedbacks" id="feedbacks">
   <div class="wrap">
-    <div class="head-2 rv">
-      <span class="lab ac lab-line">Experiências compartilhadas</span>
-      <h2>Feedbacks dos clientes</h2>
-      <p>Relatos de quem transformou uma ideia em espaço com a gente. Nomes, avatares e avaliações são ilustrativos e temporários.</p>
-    </div>
-    <div class="feedback-carousel">
+    <div class="head-row rv">
+      <div class="head-2">
+        <span class="lab ac lab-line">Experiências compartilhadas</span>
+        <h2>Feedbacks dos clientes</h2>
+        <p>Relatos de quem transformou uma ideia em espaço com a gente.</p>
+      </div>
       <div class="feedback-controls">
-        <button class="feedback-arrow" id="feedbackPrev" type="button" aria-label="Ver depoimentos anteriores" aria-controls="feedbackTrack" disabled>
+        <button class="feedback-arrow" id="feedbackPrev" type="button" aria-label="Ver depoimento anterior" aria-controls="feedbackTrack">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <button class="feedback-arrow" id="feedbackNext" type="button" aria-label="Ver mais depoimentos" aria-controls="feedbackTrack">
+        <button class="feedback-arrow" id="feedbackNext" type="button" aria-label="Ver próximo depoimento" aria-controls="feedbackTrack">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
         </button>
       </div>
+    </div>
+    <div class="feedback-carousel">
       <div class="feedback-track" id="feedbackTrack" role="region" aria-label="Depoimentos de clientes" aria-roledescription="carrossel" tabindex="0">
         <article class="feedback-card">
-          <div class="feedback-photo">
-            <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Ana-Rafael&amp;backgroundColor=f1d8b5" alt="Avatar ilustrativo de Ana e Rafael" loading="lazy">
-          </div>
+          <span class="feedback-quote" aria-hidden="true">&ldquo;</span>
           <div class="feedback-stars" role="img" aria-label="Avaliação ilustrativa: 5 de 5 estrelas">★★★★★</div>
-          <span class="lab">Feedback de cliente</span>
           <blockquote>Criatividade e bom gosto definem! A Um Pé de IDEIA transformou nosso espaço com soluções super inteligentes e funcionais.</blockquote>
-          <cite>Ana e Rafael · nomes ilustrativos</cite>
+          <div class="feedback-author">
+            <div class="feedback-photo duo"><img src="img/feedbacks/ana.jpg" alt="" width="56" height="56" loading="lazy"><img src="img/feedbacks/rafael.jpg" alt="" width="56" height="56" loading="lazy"></div>
+            <div><b>Ana e Rafael</b><span>Reforma de apartamento</span></div>
+          </div>
         </article>
         <article class="feedback-card">
-          <div class="feedback-photo">
-            <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Marina&amp;backgroundColor=d1e4dc" alt="Avatar ilustrativo de Marina" loading="lazy">
-          </div>
+          <span class="feedback-quote" aria-hidden="true">&ldquo;</span>
           <div class="feedback-stars" role="img" aria-label="Avaliação ilustrativa: 5 de 5 estrelas">★★★★★</div>
-          <span class="lab">Feedback de cliente</span>
           <blockquote>Atendimento impecável e entrega no prazo. Superaram todas as nossas expectativas!</blockquote>
-          <cite>Marina · nome ilustrativo</cite>
+          <div class="feedback-author">
+            <div class="feedback-photo"><img src="img/feedbacks/marina.jpg" alt="" width="56" height="56" loading="lazy"></div>
+            <div><b>Marina</b><span>Projeto residencial</span></div>
+          </div>
         </article>
         <article class="feedback-card">
-          <div class="feedback-photo">
-            <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Camila&amp;backgroundColor=d8d5ef" alt="Avatar ilustrativo de Camila" loading="lazy">
-          </div>
+          <span class="feedback-quote" aria-hidden="true">&ldquo;</span>
           <div class="feedback-stars" role="img" aria-label="Avaliação ilustrativa: 5 de 5 estrelas">★★★★★</div>
-          <span class="lab">Feedback de cliente</span>
           <blockquote>Profissionais atenciosos que unem estética e praticidade como poucos. Recomendo de olhos fechados!</blockquote>
-          <cite>Camila · nome ilustrativo</cite>
+          <div class="feedback-author">
+            <div class="feedback-photo"><img src="img/feedbacks/camila.jpg" alt="" width="56" height="56" loading="lazy"></div>
+            <div><b>Camila</b><span>Interiores</span></div>
+          </div>
         </article>
         <article class="feedback-card">
-          <div class="feedback-photo">
-            <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Fernanda&amp;backgroundColor=f2d2ce" alt="Avatar ilustrativo de Fernanda" loading="lazy">
-          </div>
+          <span class="feedback-quote" aria-hidden="true">&ldquo;</span>
           <div class="feedback-stars" role="img" aria-label="Avaliação ilustrativa: 5 de 5 estrelas">★★★★★</div>
-          <span class="lab">Feedback de cliente</span>
           <blockquote>Projeto moderno, aconchegante e com a nossa cara. O ambiente ganhou outra vida!</blockquote>
-          <cite>Fernanda · nome ilustrativo</cite>
+          <div class="feedback-author">
+            <div class="feedback-photo"><img src="img/feedbacks/fernanda.jpg" alt="" width="56" height="56" loading="lazy"></div>
+            <div><b>Fernanda</b><span>Reforma de casa</span></div>
+          </div>
         </article>
         <article class="feedback-card">
-          <div class="feedback-photo">
-            <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Lucas&amp;backgroundColor=d6e3f3" alt="Avatar ilustrativo de Lucas" loading="lazy">
-          </div>
+          <span class="feedback-quote" aria-hidden="true">&ldquo;</span>
           <div class="feedback-stars" role="img" aria-label="Avaliação ilustrativa: 5 de 5 estrelas">★★★★★</div>
-          <span class="lab">Feedback de cliente</span>
           <blockquote>Excelente experiência! Dá para sentir o cuidado e a paixão pelo design em cada detalhe.</blockquote>
-          <cite>Lucas · nome ilustrativo</cite>
+          <div class="feedback-author">
+            <div class="feedback-photo"><img src="img/feedbacks/lucas.jpg" alt="" width="56" height="56" loading="lazy"></div>
+            <div><b>Lucas</b><span>Espaço comercial</span></div>
+          </div>
         </article>
       </div>
+      <div class="feedback-dots" id="feedbackDots" role="tablist" aria-label="Escolher depoimento"></div>
+      <p class="feedback-note">Nomes, fotos e avaliações são ilustrativos e temporários.</p>
     </div>
   </div>
 </section>
